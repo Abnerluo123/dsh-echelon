@@ -432,7 +432,19 @@ export class RouterAdapter extends Adapter {
         ? undefined
         : {
           efforts: declared.efforts.map(effort => ({ ...effort })),
-          ...(declared.defaultEffort === undefined ? {} : { defaultEffort: declared.defaultEffort }),
+          ...(() => {
+            const list = declared.efforts.map(effort => effort.id)
+            // A configured default is translated onto this tier's own list, so the
+            // picker can never show a level it does not offer - which is how a
+            // stale "middle" ended up displayed on a tier that only speaks
+            // off/low/high/max. Unset means "the model's own default".
+            const wanted = settings.defaultEffort
+            const chosen = wanted === undefined ? undefined : mapEffort(wanted, list).effort
+            const fallback = declared.defaultEffort !== undefined && list.includes(declared.defaultEffort)
+              ? declared.defaultEffort
+              : list[0]
+            return { defaultEffort: chosen !== undefined && list.includes(chosen) ? chosen : fallback }
+          })(),
         }
     return {
       ...base,

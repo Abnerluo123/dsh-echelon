@@ -71,6 +71,11 @@ The rules:
 - Turn off **Settings → Advanced → Map reasoning levels automatically** to forward
   the raw value.
 
+The same place holds **Default level for new chats**: empty follows the model's own
+  default; a chosen level is pre-selected for new conversations and snapped to
+  what each tier offers (so the picker never shows an unavailable level).
+  Existing conversations keep whatever they already selected.
+
 Tiers and members both take a reasoning effort and a context window. **A member's own value wins**; otherwise the tier's default applies; otherwise the model and session decide. That way a whole chain can be retuned by editing one tier field instead of visiting every member.
 
 ## Behaviour

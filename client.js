@@ -132,6 +132,9 @@ window.__ModuleLoader__.load({
         'options.imageScopeHint': '关掉后，整段会话里只要还有图就一直用视觉模型。打开则旧图不再影响选人（旧图会被降级成文字）。',
         'options.modalityRouting': '有图片时自动选能看图的成员',
         'options.modalityRoutingHint': '请求带图片时，跳过不支持视觉的成员，避免图片被静默转成文字。',
+        'options.defaultEffort': '新对话默认强度',
+        'options.defaultEffortModel': '跟随模型',
+        'options.defaultEffortHint': '新开会话时预选的档位。选了具体档位会对齐到该挡位支持的档位；已存在的会话不受影响。',
         'options.effortMapping': '思考强度自动映射',
         'options.effortMappingHint': '把 xhigh / high / middle / low / off 翻译成每个模型自己的挡位名字。关掉则原样转发。',
         'options.logging': '记录调用日志',
@@ -274,6 +277,9 @@ window.__ModuleLoader__.load({
         'options.imageScopeHint': 'Off keeps using a vision model while any image remains in the conversation. On lets older images stop affecting selection (they are flattened to text for a text-only member).',
         'options.modalityRouting': 'Route images to a model that can see',
         'options.modalityRoutingHint': 'When a request carries an image, skip members that cannot see it instead of letting DSH flatten it to text.',
+        'options.defaultEffort': 'Default level for new chats',
+        'options.defaultEffortModel': 'Follow the model',
+        'options.defaultEffortHint': 'Pre-selected level when a conversation starts. A chosen level is snapped to what that tier offers; existing conversations are unaffected.',
         'options.effortMapping': 'Map reasoning levels automatically',
         'options.effortMappingHint': 'Translate xhigh / high / middle / low / off into each model\'s own names. Off forwards the value as written.',
         'options.logging': 'Record a request log',
@@ -1353,6 +1359,16 @@ window.__ModuleLoader__.load({
             }),
             h('span', { style: { fontSize: '13px' } }, t('options.effortMapping')),
             h('small', null, t('options.effortMappingHint'))),
+          h(Field, { label: t('options.defaultEffort'), hint: t('options.defaultEffortHint') },
+            h('select', {
+              value: settings.defaultEffort ?? '', 'aria-label': t('options.defaultEffort'),
+              onChange: event => setDraft(current => {
+                const { defaultEffort: _drop, ...rest } = current
+                return event.target.value === '' ? rest : { ...rest, defaultEffort: event.target.value }
+              }),
+            },
+            h('option', { value: '' }, t('options.defaultEffortModel')),
+            EFFORT_LADDER.map(id => h('option', { key: id, value: id }, id)))),
           h('label', { className: 'mr-row', title: t('options.loggingHint') },
             h('input', {
               type: 'checkbox', checked: settings.logRequests !== false,

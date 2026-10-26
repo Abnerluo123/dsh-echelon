@@ -28,6 +28,14 @@ export const AUTO_TIER_ID = 'auto'
 /** Ceiling on members per tier: a longer chain is latency, not safety. */
 export const MAX_MEMBERS = 32
 
+/**
+ * Levels a user may pick as the default for a new conversation.
+ *
+ * Mirrors the ladder in `src/effort.js`. Declared here so this module stays the
+ * dependency-free floor: settings normalization must not import the routing layer.
+ */
+export const DEFAULT_EFFORT_CHOICES = Object.freeze(['off', 'low', 'middle', 'high', 'xhigh'])
+
 /** Ceiling on tiers, so the picker stays navigable. */
 export const MAX_TIERS = 24
 
@@ -321,6 +329,11 @@ export function normalizeSettings(raw) {
     // models with different vocabularies can only offer levels they share —
     // often none at all.
     effortMapping: source.effortMapping !== false,
+    // Default reasoning level for a new conversation. Unset means "whatever the
+    // model itself defaults to", which is the only value that is always valid for
+    // every tier; a chosen level is mapped onto each tier's own list before it is
+    // advertised, so the picker never shows a level it does not offer.
+    defaultEffort: DEFAULT_EFFORT_CHOICES.includes(source.defaultEffort) ? source.defaultEffort : undefined,
     // Image routing: when a request carries an image, prefer a member that can
     // actually see it. Off means "keep chain order even if the image gets
     // flattened to text", which is only sensible for debugging.

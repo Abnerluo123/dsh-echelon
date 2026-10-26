@@ -1115,3 +1115,35 @@ test('a confirmed vision member outranks an undeclared one', async () => {
   await collect(adapter, 'auto', { messages: IMAGE_MESSAGE })
   assert.equal(log.read().entries[0].provider, 'eyes', 'the confirmed member wins even though it is second')
 })
+
+test('a new conversation defaults to the model level unless overridden', async () => {
+  // A tier that speaks off/low/high/max must not report a default of "middle":
+  // the picker would show a level the model does not offer.
+  const build = extra => wire(
+    { ...tierSettings([{ provider: 'p', model: 'm' }]), ...extra },
+    { models: { p: { models: [{ id: 'm', efforts: ['off', 'low', 'high', 'max'] }] } }, routes: {} },
+  )
+  const model = await build({}).adapter.resolveModel('model-router', 'auto')
+  assert.equal(model.reasoning.defaultEffort, 'off', 'the fixture model declares off as its own default')
+
+  // This tier has no "middle", so the choice snaps to the nearest level; a tie
+  // goes to the stronger one, exactly as dispatch would translate it.
+  const wantedM = await build({ defaultEffort: 'middle' }).adapter.resolveModel('model-router', 'auto')
+  assert.equal(wantedM.reasoning.defaultEffort, 'high', 'an unavailable level snaps rather than being advertised')
+
+  const wantedLow = await build({ defaultEffort: 'low' }).adapter.resolveModel('model-router', 'auto')
+  assert.equal(wantedLow.reasoning.defaultEffort, 'low')
+})
+
+test('a configured default is snapped onto the levels the tier offers', async () => {
+  // xhigh is not in off/low/high/max; advertising it would put a level in the
+  // picker that the model never listed.
+  const { adapter } = wire(
+    { ...tierSettings([{ provider: 'p', model: 'm' }]), defaultEffort: 'xhigh' },
+    { models: { p: { models: [{ id: 'm', efforts: ['off', 'low', 'high', 'max'] }] } }, routes: {} },
+  )
+  const info = await adapter.resolveModel('model-router', 'auto')
+  const offered = info.reasoning.efforts.map(effort => effort.id)
+  assert.ok(offered.includes(info.reasoning.defaultEffort), `default ${info.reasoning.defaultEffort} must be one of ${offered.join('/')}`)
+  assert.equal(info.reasoning.defaultEffort, 'max')
+})
