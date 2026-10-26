@@ -459,7 +459,8 @@ export function orderByContext(chain, inputTokens, windowOf, options = {}) {
     if (!Number.isFinite(window) || window <= 0) return undefined
     const reserve = member.maxTokens ?? options.reserveOutput
     const safety = Math.max(Math.ceil(window * 0.02), 512)
-    return { window, usable: Math.max(window - safety - (Number.isFinite(reserve) ? reserve : 0), 0) }
+    const kept = Number.isFinite(reserve) ? reserve : 0
+    return { window, reserve: kept, safety, usable: Math.max(window - safety - kept, 0) }
   }
   for (const member of chain) {
     const room = usableOf(member)
@@ -472,7 +473,7 @@ export function orderByContext(chain, inputTokens, windowOf, options = {}) {
       fits.push(member)
       continue
     }
-    skipped.push({ provider: member.provider, model: member.model, window: room.window, usable: room.usable })
+    skipped.push({ provider: member.provider, model: member.model, window: room.window, usable: room.usable, reserve: room.reserve, needed: inputTokens })
   }
   if (fits.length > 0) {
     const ordered = strategy === 'roomy' ? byHeadroom(fits, usableOf) : fits

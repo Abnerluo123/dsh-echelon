@@ -387,3 +387,17 @@ test('the browser ladder matches the host ladder', async () => {
   assert.deepEqual(effortChoices([]), clientLadder, 'the menu always offers every rung')
   assert.deepEqual(effortChoices(['turbo']).slice(-1), ['turbo'], 'a foreign name is appended, not replaced')
 })
+
+test('a skipped member is labelled by its actual reason', async () => {
+  // Regression: every skipped row with a message rendered as "does not fit the
+  // context", so a member dropped for having no vision was reported as a context
+  // problem — a false explanation where the user goes to find out why their
+  // image was ignored.
+  const { skipReasonKey, DICT } = loadBundle().__test
+  assert.equal(skipReasonKey('NO_VISION'), 'log.noVision')
+  assert.equal(skipReasonKey('CONTEXT_TOO_SMALL'), 'log.contextSkip')
+  assert.equal(skipReasonKey('NO_VISION_MEMBER'), 'log.noVisionMember')
+  assert.equal(skipReasonKey(undefined), 'log.skipped')
+  assert.notEqual(DICT.zh['log.noVision'], DICT.zh['log.contextSkip'], 'the two reasons must read differently')
+  assert.equal(DICT.zh['log.noVision'], '无视觉')
+})

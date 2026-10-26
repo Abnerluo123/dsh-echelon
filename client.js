@@ -163,6 +163,8 @@ window.__ModuleLoader__.load({
         'log.skipped': '跳过',
         'log.vision': '含图片',
         'log.contextSkip': '上下文装不下',
+        'log.noVision': '无视觉',
+        'log.noVisionMember': '挡位里没有能看图的成员',
         'log.dropped': '（另有 {n} 次尝试未显示）',
 
         'preview.title': '预览：模型选择器会显示',
@@ -303,6 +305,8 @@ window.__ModuleLoader__.load({
         'log.skipped': 'skipped',
         'log.vision': 'with image',
         'log.contextSkip': 'does not fit the context',
+        'log.noVision': 'cannot see images',
+        'log.noVisionMember': 'no image-capable member in this tier',
         'log.dropped': '({n} more attempts hidden)',
 
         'preview.title': 'Preview: the picker will show',
@@ -949,6 +953,23 @@ window.__ModuleLoader__.load({
 
     // ── request log ─────────────────────────────────────────────────────────
 
+    /**
+     * The dictionary key that names why a member was skipped.
+     *
+     * Previously every skipped row with a message rendered as "does not fit the
+     * context", so a member dropped for having no vision was reported as a
+     * context problem — a false explanation in the one place a user goes to find
+     * out why their image was ignored.
+     * @param {string | undefined} code - the skip code.
+     * @returns {string} a dictionary key.
+     */
+    function skipReasonKey(code) {
+      if (code === 'NO_VISION') return 'log.noVision'
+      if (code === 'NO_VISION_MEMBER') return 'log.noVisionMember'
+      if (code === 'CONTEXT_TOO_SMALL') return 'log.contextSkip'
+      return code === undefined ? 'log.skipped' : code
+    }
+
     /** One logged attempt: which member, which try, and how it ended. */
     function LogAttempt({ attempt }) {
       const skipped = attempt.outcome === 'skipped'
@@ -966,8 +987,10 @@ window.__ModuleLoader__.load({
         // A skipped member was never dialled, so "try 0" would be misleading.
         skipped ? null : h('span', null, t('log.attempt', { n: attempt.attempt })),
         attempt.durationMs === undefined ? null : h('span', null, t('log.elapsed', { ms: attempt.durationMs })),
-        skipped && attempt.message !== undefined
-          ? h('span', { title: attempt.message }, t('log.contextSkip'))
+        skipped
+          ? h(Fragment, null,
+            h('span', null, t(skipReasonKey(attempt.code))),
+            attempt.message === undefined ? null : h('span', { className: 'mr-log-usage' }, attempt.message))
           : attempt.code === undefined ? null : h('span', null, attempt.code))
     }
 
@@ -1473,7 +1496,7 @@ window.__ModuleLoader__.load({
     exports.apply = apply
     exports.inject = inject
     exports.name = 'model-router'
-    exports.__test = { DICT, CSS, TABS, EFFORT_LADDER, effortChoices, makeTierId, fromSeconds, toSeconds, move, setHideRule }
+    exports.__test = { DICT, CSS, TABS, EFFORT_LADDER, effortChoices, skipReasonKey, makeTierId, fromSeconds, toSeconds, move, setHideRule }
     return module.exports
   },
 })

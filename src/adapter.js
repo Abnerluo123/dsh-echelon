@@ -665,7 +665,9 @@ export class RouterAdapter extends Adapter {
         outcome: 'skipped',
         ...(blind ? { code: 'NO_VISION', message: '该成员不支持图像输入' } : {
           code: 'CONTEXT_TOO_SMALL',
-          message: `需要 ${routed.estimate} tokens，可用 ${skipped.usable} / ${skipped.window}`,
+          message: skipped.reserve === undefined || skipped.reserve === 0
+            ? `需要 ${skipped.needed ?? routed.estimate} tokens，可用 ${skipped.usable} / 窗口 ${skipped.window}`
+            : `需要 ${skipped.needed ?? routed.estimate} tokens，窗口 ${skipped.window}，输出预留 ${skipped.reserve}，只剩 ${skipped.usable}`,
         }),
       })
     }
