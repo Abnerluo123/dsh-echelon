@@ -87,7 +87,7 @@ test('an empty document still yields a selectable menu', () => {
   assert.equal(settings.tiers.length, 1)
   assert.equal(settings.tiers[0].id, 'auto')
   assert.deepEqual(settings.tiers[0].members, [])
-  assert.equal(settings.exposure, 'tiers')
+  assert.equal(settings.exposure, 'all', 'a fresh install hides nothing')
 })
 
 test('garbage input normalizes to defaults rather than throwing', () => {

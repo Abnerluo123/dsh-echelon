@@ -312,7 +312,11 @@ export function normalizeSettings(raw) {
   const logLimit = Number(source.logLimit)
   return {
     version: 3,
-    exposure: EXPOSURE_MODES.includes(source.exposure) ? source.exposure : 'tiers',
+    // A fresh install shows everything. Hiding is a deliberate step a user takes
+    // after they have built a working tier; defaulting to "tiers only" made a new
+    // user's entire model list disappear the moment they installed the plugin,
+    // with nothing on screen explaining where it went.
+    exposure: EXPOSURE_MODES.includes(source.exposure) ? source.exposure : 'all',
     tiers: kept,
     hide,
     defaultIdleTimeoutMs: Number.isFinite(timeout)
