@@ -398,13 +398,18 @@ test('the bundle parses token budgets the same way the host does', async () => {
   // page and a `128k` hand-edited into settings.json must mean one number.
   const { parseTokens, formatTokens } = loadBundle().__test
   const { parseTokenBudget, formatTokenBudget } = await import('../src/config.js')
-  for (const input of ['131072', '128k', '128K', '1m', '1.5m', '32k', '1000000']) {
+  for (const input of ['131072', '128k', '128K', '1m', '1M', '1.5m', '256k', '1000000']) {
     assert.equal(parseTokens(input), parseTokenBudget(input), `parse ${input}`)
   }
-  for (const tokens of [131_072, 1_048_576, 100_000, 32_768, 4_000_000]) {
+  // Formatting agrees on every value, including the ones it rounds for display.
+  for (const tokens of [131_072, 1_048_576, 100_000, 32_768, 4_000_000, 128_000, 256_000, 1_000_000]) {
     assert.equal(formatTokens(tokens), formatTokenBudget(tokens), `format ${tokens}`)
+  }
+  // Exact thousands round-trip; a binary number is intentionally shown rounded.
+  for (const tokens of [128_000, 100_000, 256_000, 1_000_000, 4_000_000, 32_000]) {
     assert.equal(parseTokens(formatTokens(tokens)), tokens, `round-trip ${tokens}`)
   }
+  assert.equal(formatTokens(1_048_576), '1m', 'a binary million still reads as 1m')
   assert.equal(parseTokens(''), undefined)
   assert.equal(parseTokens('abc'), undefined)
 })

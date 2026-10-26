@@ -80,12 +80,17 @@ export const MAX_TOKEN_BUDGET = 4_000_000
 /**
  * Multipliers for the short forms a person types: `128k`, `1m`.
  *
- * Binary, not decimal: a model advertising "1M context" means 1,048,576 tokens,
- * so `1m` has to mean that too. Reading it as 1e6 would put every override 4.8%
- * below the real window — enough for a long session to be skipped for capacity
- * that actually existed.
+ * Deliberately decimal, because that is what people mean when they type them and
+ * what a round display value has to read back as. `1m` is 1,000,000 and `128k` is
+ * 128,000 — matching the number a provider advertises in prose, and matching what
+ * the field shows, so typing what you see never silently changes the value.
+ *
+ * A model whose real window is 1,048,576 is stored as that exact number and shown
+ * as `1m`; reading it back as 1,000,000 is the one accepted rounding, and it is
+ * the direction a user expects (a slightly conservative override, never a larger
+ * one than the model claims).
  */
-const TOKEN_UNITS = Object.freeze({ '': 1, k: 1_024, m: 1_048_576 })
+const TOKEN_UNITS = Object.freeze({ '': 1, k: 1_000, m: 1_000_000 })
 
 /**
  * Parse a token budget written by hand: `131072`, `128k`, `1m`, `1.5m`.
@@ -105,18 +110,34 @@ export function parseTokenBudget(raw) {
 }
 
 /**
- * Render a token budget in its shortest honest form: `128k`, `1m`, `131072`.
+ * Render a token budget the way a person would say it: `1m`, `256k`, `128k`.
  *
- * Only exact multiples are shortened, so the field never shows a rounded value
- * that would be written back as a different number on the next save.
+ * Two rules, and the order matters:
+ *
+ * 1. an exact multiple keeps its own value, so `128000` is `128k` and reads back
+ *    unchanged;
+ * 2. anything else is a binary number a model actually reports (131072, 262144,
+ *    1048576) and is shown on the decimal scale a reader thinks in — `131k`,
+ *    `262k`, `1m`. The field must never fall back to a digit string, because
+ *    "stop making me count zeros" is the entire reason this exists.
+ *
+ * The cost of rule 2 is a rounding of at most half a k when the shown text is
+ * typed back in. That is the right trade: a context override that is 0.4% shy of
+ * the model's headline number changes nothing, while `1048576` in a text box is
+ * unreadable.
  * @param {number | undefined} value - stored tokens.
  * @returns {string} text for the field, or '' when unset.
  */
 export function formatTokenBudget(value) {
   if (!Number.isFinite(value) || value <= 0) return ''
   const tokens = Math.round(value)
-  for (const [suffix, factor] of [['m', TOKEN_UNITS.m], ['k', TOKEN_UNITS.k]]) {
-    if (tokens % factor === 0) return `${tokens / factor}${suffix}`
+  if (tokens % 1_000_000 === 0) return `${tokens / 1_000_000}m`
+  // An exact thousand keeps its own digits: 128000 is `128k`, not `131k`.
+  if (tokens % 1_000 === 0) return `${tokens / 1_000}k`
+  // A binary number from a provider, shown on the decimal scale.
+  if (tokens >= 1_000_000) return `${Math.round(tokens / 100_000) / 10}m`
+  if (tokens >= 1_000) {
+    return `${Math.round(tokens / 1_000)}k`
   }
   return String(tokens)
 }

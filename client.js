@@ -35,20 +35,18 @@ window.__ModuleLoader__.load({
       zh: {
         nav: 'Echelon',
         title: 'Echelon',
-        intro: '只把你自己定义的挡位放进模型选择器。选中一个挡位，请求按你排好的顺序依次调用真实模型；某个模型重试之后仍然失败，就自动换下一个。',
         loading: '正在读取…',
         loadFailed: '无法连接插件后端',
         retry: '重试',
-        save: '保存',
+        saveAndReload: '保存并重新加载',
+        reload: '重新加载',
         saving: '正在保存…',
-        saved: '已保存。模型选择器会在几秒内刷新。',
+        saved: '已保存。',
         saveFailed: '保存失败',
         unsaved: '有未保存的修改',
-        reset: '放弃修改',
-        reload: '重新载入',
 
         'tiers.title': '挡位',
-        'tiers.hint': '挡位就是你选模型时看到的名字。顺序即模型选择器里的顺序。',
+        'tiers.hint': '顺序即模型选择器里的顺序。',
         'tiers.add': '新增挡位',
         'tiers.name': '名称',
         'tiers.namePlaceholder': '例如：日常 / 攻坚 / 便宜',
@@ -62,8 +60,6 @@ window.__ModuleLoader__.load({
         'tiers.defaults': '挡位默认值',
         'tiers.inherit': '跟随成员',
         'tiers.useGlobal': '全局默认',
-        'tiers.timeoutHint': '成员没单独设置时用这个。',
-        'tiers.attemptsHint': '成员没单独设置时用这个。',
         'tiers.members': '成员（按顺序）',
         'tiers.membersEmpty': '还没有模型。选一个加进来。',
         'tiers.addMember': '添加模型',
@@ -72,22 +68,16 @@ window.__ModuleLoader__.load({
         'member.provider': '来源',
         'member.model': '模型',
         'member.attempts': '重试次数',
-        'member.attemptsHint': '0 = 不重试',
         'member.timeout': '超时',
-        'member.timeoutHint': '0 = 不限制',
         'member.timeoutUnit': '秒',
         'member.unlimited': '不限制',
+        'member.follow': '跟随挡位',
         'member.effort': '思考强度',
         'member.effortDefault': '跟随会话',
         'member.effortOff': '关闭思考',
         'member.effortHint': '',
         'member.effortStale': '模型没上报',
         'member.context': '上下文长度',
-        'tiers.strategy': '选人策略',
-        'tiers.strategyOrder': '按顺序（第一个装得下的）',
-        'tiers.strategyRoomy': '优先剩余空间最大的',
-        'tiers.strategyHint': '',
-        'member.contextHint': '支持 128k / 1m',
         'member.maxTokens': '最大输出',
         'member.defaultAuto': '模型默认',
         'member.enabled': '启用',
@@ -100,7 +90,6 @@ window.__ModuleLoader__.load({
         'member.seesImagesAuto': '跟随模型上报',
         'member.seesImagesYes': '强制支持图像',
         'member.seesImagesNo': '强制不支持',
-        'member.seesImagesHint': '模型没上报但实际能看图时选「强制支持」。',
         'member.probe': '检测',
         'member.probeOk': '可用',
         'member.probeFail': '不可用',
@@ -127,7 +116,6 @@ window.__ModuleLoader__.load({
 
         'options.title': '高级',
         'options.timeout': '默认超时',
-        'options.timeoutHint': '成员和挡位都没设置时用这个。0 = 不限制。',
         'options.descriptions': '在模型选择器里显示挡位说明',
         'options.file': '配置文件',
         'options.copy': '复制路径',
@@ -187,20 +175,18 @@ window.__ModuleLoader__.load({
       en: {
         nav: 'Model Router',
         title: 'Model Router',
-        intro: 'Expose only the tiers you define. Picking one walks an ordered chain of real models; a model that keeps failing after its retries hands over to the next.',
         loading: 'Loading…',
         loadFailed: 'Cannot reach the plugin backend',
         retry: 'Retry',
-        save: 'Save',
+        saveAndReload: 'Save and reload',
+        reload: 'Reload',
         saving: 'Saving…',
-        saved: 'Saved. The model picker refreshes within a few seconds.',
+        saved: 'Saved.',
         saveFailed: 'Save failed',
         unsaved: 'Unsaved changes',
-        reset: 'Discard',
-        reload: 'Reload',
 
         'tiers.title': 'Tiers',
-        'tiers.hint': 'A tier is the name you pick a model by. Their order here is their order in the picker.',
+        'tiers.hint': 'Their order here is their order in the picker.',
         'tiers.add': 'New tier',
         'tiers.name': 'Name',
         'tiers.namePlaceholder': 'e.g. Daily / Heavy / Cheap',
@@ -214,8 +200,6 @@ window.__ModuleLoader__.load({
         'tiers.defaults': 'Tier defaults',
         'tiers.inherit': 'follow member',
         'tiers.useGlobal': 'global default',
-        'tiers.timeoutHint': 'Used when a member does not set its own.',
-        'tiers.attemptsHint': 'Used when a member does not set its own.',
         'tiers.members': 'Members (in order)',
         'tiers.membersEmpty': 'No models yet. Pick one to add.',
         'tiers.addMember': 'Add model',
@@ -224,22 +208,16 @@ window.__ModuleLoader__.load({
         'member.provider': 'Route',
         'member.model': 'Model',
         'member.attempts': 'Retries',
-        'member.attemptsHint': '0 = none',
         'member.timeout': 'Timeout',
-        'member.timeoutHint': '0 = no limit',
         'member.timeoutUnit': 's',
         'member.unlimited': 'no limit',
+        'member.follow': 'follow tier',
         'member.effort': 'Reasoning',
         'member.effortDefault': 'Follow session',
         'member.effortOff': 'No reasoning',
         'member.effortHint': '',
         'member.effortStale': 'not published',
         'member.context': 'Context window',
-        'tiers.strategy': 'Selection',
-        'tiers.strategyOrder': 'Chain order (first that fits)',
-        'tiers.strategyRoomy': 'Most free space first',
-        'tiers.strategyHint': '',
-        'member.contextHint': 'Accepts 128k / 1m',
         'member.maxTokens': 'Max output',
         'member.defaultAuto': 'Model default',
         'member.enabled': 'Enabled',
@@ -252,7 +230,6 @@ window.__ModuleLoader__.load({
         'member.seesImagesAuto': 'Follow the model',
         'member.seesImagesYes': 'Force: sees images',
         'member.seesImagesNo': 'Force: cannot see',
-        'member.seesImagesHint': 'For a model that sees images without declaring it.',
         'member.probe': 'Test',
         'member.probeOk': 'available',
         'member.probeFail': 'unavailable',
@@ -279,7 +256,7 @@ window.__ModuleLoader__.load({
 
         'options.title': 'Advanced',
         'options.timeout': 'Default timeout',
-        'options.timeoutHint': 'Used when neither the member nor the tier sets one. 0 = no limit.',        'options.descriptions': 'Show tier descriptions in the picker',
+        'options.descriptions': 'Show tier descriptions in the picker',
         'options.file': 'Settings file',
         'options.copy': 'Copy path',
         'options.copied': 'Copied',
@@ -386,8 +363,19 @@ window.__ModuleLoader__.load({
 .mr-root :is(button,input,select,textarea):focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
 .mr-root input[type=text],.mr-root input[type=number],.mr-root input[type=search],.mr-root select{box-sizing:border-box;font:inherit;font-size:13px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:6px 9px;min-height:32px;min-width:0}
 .mr-root input::placeholder{color:var(--dsw-alias-label-tertiary)}
-.mr-tier{display:flex;flex-direction:column;gap:12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:14px;background:var(--dsw-alias-bg-layer-2)}
+.mr-tier{border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);overflow:hidden}
 .mr-tier.is-disabled{opacity:.6}
+/* A tier collapses to one row. The summary is the whole "which tier is this"
+   answer; the body is the editing surface nobody needs open by default. */
+.mr-tier-summary{display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;list-style:none;user-select:none;font-size:14px;font-weight:500}
+.mr-tier-summary::-webkit-details-marker{display:none}
+.mr-tier-summary:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.mr-tier-summary:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
+.mr-tier[open] > .mr-tier-summary{border-bottom:1px solid var(--dsw-alias-border-l2)}
+.mr-tier[open] .mr-disclosure-chevron{transform:rotate(90deg)}
+.mr-tier-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mr-tier-body{display:flex;flex-direction:column;gap:12px;padding:12px}
+.mr-dirty{font-size:11px;color:var(--dsw-alias-label-tertiary);white-space:nowrap}
 .mr-tier-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}
 .mr-tier-name{display:flex;align-items:center;gap:8px;min-width:0}
 .mr-tier-name input{flex:1;min-width:80px;font-size:14px;font-weight:500}
@@ -443,10 +431,6 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 .mr-preview-row{display:flex;align-items:center;gap:6px;font-size:13px;padding:2px 0}
 .mr-preview-row .mr-check{color:var(--dsw-alias-label-primary);flex:none;width:14px}
 .mr-preview-row.is-hidden{opacity:.35;text-decoration:line-through}
-/* The action bar stays in normal flow at the end of the page instead of sticking
-   over the content: a sticky bar overlapped the rows behind it inside the
-   settings scroller, which is what made the buttons cover the member text. */
-.mr-sticky-actions{position:static;margin-top:2px;background:transparent;border-top:1px solid var(--dsw-alias-border-l2);padding:12px 0 4px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .mr-tabs{display:flex;gap:4px;border-bottom:1px solid var(--dsw-alias-border-l2);padding-bottom:2px}
 /* Collapsible detail block. One compact row that still describes itself: a
    bare chevron left a wide empty strip that said nothing about what it would
@@ -583,27 +567,54 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
      * @param {string} raw - typed text.
      * @returns {number | undefined} tokens, or undefined when unusable.
      */
+    /**
+     * Parse `128k` / `1m` / `256K` / `1.5M` / `131072` into whole tokens.
+     *
+     * Mirrors `parseTokenBudget` in `src/config.js`, and for the same reason as
+     * {@link EFFORT_LADDER}: one bundle, no host imports. Decimal multipliers, so
+     * `1m` = 1,000,000 and typing back exactly what the field shows never changes
+     * the value.
+     * @param {string} raw - typed text.
+     * @returns {number | undefined} tokens, or undefined when unusable.
+     */
     function parseTokens(raw) {
       const match = /^\s*(\d+(?:\.\d+)?)\s*([km])?\s*$/i.exec(String(raw))
       if (match === null) return undefined
       const amount = Number(match[1])
       if (!Number.isFinite(amount) || amount <= 0) return undefined
       const unit = (match[2] ?? '').toLowerCase()
-      return Math.round(amount * (unit === 'k' ? 1024 : unit === 'm' ? 1048576 : 1))
+      return Math.round(amount * (unit === 'k' ? 1_000 : unit === 'm' ? 1_000_000 : 1))
     }
 
     /**
-     * Render tokens back in the shortest exact form: `128k`, `1m`, `131072`.
-     * Only exact multiples are shortened, so a displayed value never round-trips
-     * into a different number.
+     * Render tokens back in the shortest form a person would write.
+     *
+     * `1000000` → `1m`, `262144` → `256k`, `131072` → `128k`. Below 1M the unit is
+     * always `k` (never a raw digit string), because that is the whole point:
+     * nobody wants to count zeros. A value that is not a clean multiple of 1024
+     * stays exact — rounding it would silently change what gets saved next time.
+     * 1000000 is not a multiple of 1048576 but is a recognisable "1M", so the
+     * decimal million is folded onto `1m` as well.
+     * @param {number | undefined} value - stored tokens.
+     * @returns {string} field text, or '' when unset.
+     */
+    /**
+     * Render tokens the way a person would say them: `1m`, `256k`, `128k`.
+     *
+     * Mirrors `formatTokenBudget` in `src/config.js`. Exact multiples keep their
+     * own value (`128000` is `128k`); a provider's binary number (131072, 262144,
+     * 1048576) is shown on the decimal scale (`131k`, `262k`, `1m`) because a
+     * digit string in this field is exactly what was complained about.
      * @param {number | undefined} value - stored tokens.
      * @returns {string} field text, or '' when unset.
      */
     function formatTokens(value) {
       if (!Number.isFinite(value) || value <= 0) return ''
       const tokens = Math.round(value)
-      if (tokens % 1048576 === 0) return `${tokens / 1048576}m`
-      if (tokens % 1024 === 0) return `${tokens / 1024}k`
+      if (tokens % 1_000_000 === 0) return `${tokens / 1_000_000}m`
+      if (tokens % 1_000 === 0) return `${tokens / 1_000}k`
+      if (tokens >= 1_000_000) return `${Math.round(tokens / 100_000) / 10}m`
+      if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`
       return String(tokens)
     }
 
@@ -834,24 +845,41 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
      * advertises "1M context" means 1,048,576 tokens and rounding down to 1e6
      * would file the override 4.8% short of the real window.
      */
+    /**
+     * A token budget written the way people say it: `128k`, `1m`, `256K`, `1.5M`.
+     *
+     * Display and input are the same short form on purpose. A context window is
+     * 1000000 or 1048576; showing that digit string and expecting the reader to
+     * count zeros was the actual complaint, so a stored value renders as `1m` and
+     * anything below 1M renders in `k` (`256k`, `512k`). Whole numbers that are
+     * not clean multiples stay exact, because rounding them would change what is
+     * saved on the next edit.
+     *
+     * `k` is 1024 and `m` is 1048576 — binary, because a model advertising "1M
+     * context" means 1,048,576 tokens.
+     *
+     * While typing, the field is left alone (no rewriting mid-word); it is parsed
+     * on blur or Enter, and the parsed value is shown back in short form.
+     */
     function TokenInput({ value, ariaLabel, placeholder, onChange }) {
       const [draft, setDraft] = useState(formatTokens(value))
       useEffect(() => { setDraft(formatTokens(value)) }, [value])
       /** Commit whatever the box currently says. */
       const commit = text => {
         const trimmed = text.trim()
-        if (trimmed === '') { onChange(undefined); return }
+        if (trimmed === '') { onChange(undefined); setDraft(''); return }
         const parsed = parseTokens(trimmed)
-        if (parsed === undefined) return
-        onChange(Math.min(Math.max(Math.round(parsed), 1_024), 4_000_000))
+        if (parsed === undefined) { setDraft(formatTokens(value)); return }
+        const bounded = Math.min(Math.max(Math.round(parsed), 1_024), 4_000_000)
+        onChange(bounded)
+        // Echo the stored number back in short form, so "what I typed" and "what
+        // is saved" are visibly the same thing.
+        setDraft(formatTokens(bounded))
       }
       return h('input', {
         type: 'text', inputMode: 'text', autoComplete: 'off', spellCheck: false,
         value: draft, 'aria-label': ariaLabel, placeholder,
         onChange: event => setDraft(event.target.value),
-        // Commit on blur/Enter rather than per keystroke. Parsing "128" as the
-        // user types toward "128k" would store 128000, then 128000 again, and the
-        // rewrite loop is what makes a half-typed field jump.
         onBlur: () => commit(draft),
         onKeyDown: event => {
           if (event.key !== 'Enter') return
@@ -912,22 +940,26 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
             }, '✕'))),
         // Eight inputs per member made a three-member tier taller than the
         // settings panel, so the knobs live behind a disclosure. The digest
-        // repeats their current values, which is what you came to check.
+        // repeats their current values, which is what you came to check — and it
+        // has to cope with "unset", which is now a real state: rendering
+        // `undefined` or `NaN` here is what a naive concatenation produces.
         h(Disclosure, {
           digest: [
-            `${t('member.attempts')} ${member.attempts}`,
-            `${t('member.timeout')} ${member.idleTimeoutMs === 0 ? t('member.unlimited') : `${toSeconds(member.idleTimeoutMs)}${t('member.timeoutUnit')}`}`,
+            member.attempts === undefined ? t('member.follow') : `${t('member.attempts')} ${member.attempts}`,
+            member.idleTimeoutMs === undefined
+              ? t('member.follow')
+              : member.idleTimeoutMs === 0 ? t('member.unlimited') : `${toSeconds(member.idleTimeoutMs)}${t('member.timeoutUnit')}`,
             member.reasoningEffort === undefined ? t('member.effortDefault') : member.reasoningEffort,
             member.contextWindow === undefined
-              ? `${t('member.context')} ${inheritedContext === undefined ? t('member.defaultAuto') : inheritedContext}`
-              : `${t('member.context')} ${member.contextWindow}`,
+              ? `${t('member.context')} ${inheritedContext === undefined ? t('member.defaultAuto') : formatTokens(inheritedContext)}`
+              : `${t('member.context')} ${formatTokens(member.contextWindow)}`,
           ].join(' · '),
         },
         h('div', { className: 'mr-member-knobs' },
           // An empty box means "inherit from the tier, then the global default".
           // Explicit `0` is still honoured where it means something, so clearing
           // the field is distinct from typing zero.
-          h(Field, { label: t('member.attempts'), hint: t('member.attemptsHint') },
+          h(Field, { label: t('member.attempts') },
             h(NumberInput, {
               value: member.attempts, min: 0, max: 5, ariaLabel: t('member.attempts'),
               placeholder: t('tiers.inherit'),
@@ -935,7 +967,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
                 ? without('attempts')
                 : { ...member, attempts: Math.min(Math.max(attempts, 0), 5) }),
             })),
-          h(Field, { label: t('member.timeout'), hint: t('member.timeoutHint') },
+          h(Field, { label: t('member.timeout') },
             h(NumberInput, {
               value: member.idleTimeoutMs === undefined ? undefined : toSeconds(member.idleTimeoutMs),
               min: 0, max: toSeconds(60_000), unit: t('member.timeoutUnit'),
@@ -962,7 +994,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
                   : `${member.reasoningEffort}（${t('member.effortStale')}）`)
               : null,
             efforts.map(effort => h('option', { key: effort, value: effort }, effort)))),
-          h(Field, { label: t('member.context'), hint: t('member.contextHint') },
+          h(Field, { label: t('member.context') },
             h(TokenInput, {
               value: member.contextWindow, ariaLabel: t('member.context'),
               placeholder: inheritedContext === undefined ? t('member.defaultAuto') : formatTokens(inheritedContext),
@@ -976,7 +1008,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
               placeholder: inheritedMax === undefined ? t('member.defaultAuto') : formatTokens(inheritedMax),
               onChange: maxTokens => onChange(maxTokens === undefined ? without('maxTokens') : { ...member, maxTokens }),
             })),
-          h(Field, { label: t('member.seesImages'), hint: t('member.seesImagesHint') },
+          h(Field, { label: t('member.seesImages') },
             h('select', {
               value: member.seesImages === true ? 'yes' : member.seesImages === false ? 'no' : '',
               'aria-label': `${member.model} ${t('member.seesImages')}`,
@@ -991,96 +1023,98 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 
     // ── tier card ───────────────────────────────────────────────────────────
 
-    /** One tier: name, enable state, ordering, and its member chain. */
+    /**
+     * One tier: name, enable state, ordering, and its member chain.
+     *
+     * Collapsible, because a three-tier page with six members each is a wall of
+     * inputs and the only thing you usually want is the list of names. `<details>`
+     * again, for the same reasons as {@link Disclosure}: the browser owns the
+     * state, it survives a re-render, and it is keyboard-accessible for free.
+     *
+     * The member count pill is gone. It repeated what opening the row shows, and
+     * a number next to a heading reads as "there are six of something to deal
+     * with" rather than as information.
+     */
     function TierCard({ tier, index, total, catalog, probe, onChange, onMove, onRemove, onAddMember }) {
-      return h('div', { className: `mr-tier${tier.enabled === false ? ' is-disabled' : ''}` },
-        h('div', { className: 'mr-tier-head' },
-          h('div', { className: 'mr-tier-name' },
-            h('input', {
-              type: 'text', value: tier.name, 'aria-label': t('tiers.name'), placeholder: t('tiers.namePlaceholder'),
-              onChange: event => onChange({ ...tier, name: event.target.value }),
-            }),
-            ),
-          h('div', { className: 'mr-actions' },
-            h('label', { className: 'mr-row' },
+      return h('details', {
+        className: `mr-tier${tier.enabled === false ? ' is-disabled' : ''}`,
+        open: tier.members.length === 0 ? true : undefined,
+      },
+        h('summary', { className: 'mr-tier-summary' },
+          h('span', { className: 'mr-disclosure-chevron', 'aria-hidden': 'true' }, '›'),
+          h('span', { className: 'mr-tier-label' }, tier.name === '' ? t('tiers.namePlaceholder') : tier.name),
+          tier.enabled === false ? h('span', { className: 'mr-pill' }, t('tiers.disabled')) : null),
+        h('div', { className: 'mr-tier-body' },
+          h('div', { className: 'mr-tier-head' },
+            h('div', { className: 'mr-tier-name' },
               h('input', {
-                type: 'checkbox', checked: tier.enabled !== false,
-                onChange: event => onChange({ ...tier, enabled: event.target.checked }),
-              }),
-              h('span', { style: { fontSize: '12px' } }, tier.enabled === false ? t('tiers.disabled') : t('tiers.enabled'))),
-            h('button', { type: 'button', className: 'mr-icon', disabled: index === 0, title: t('tiers.up'), 'aria-label': t('tiers.up'), onClick: () => onMove(-1) }, '↑'),
-            h('button', { type: 'button', className: 'mr-icon', disabled: index === total - 1, title: t('tiers.down'), 'aria-label': t('tiers.down'), onClick: () => onMove(1) }, '↓'),
-            h('button', { type: 'button', className: 'mr-icon mr-danger', title: t('tiers.remove'), 'aria-label': t('tiers.remove'), onClick: onRemove }, '✕'))),
-        h('div', { className: 'mr-row' }, h('h3', { style: { fontSize: '13px' } }, t('tiers.members')),
-          h('span', { className: 'mr-pill' }, String(tier.members.length))),
-        // Tier-level defaults for the two knobs that are worth applying to a
-        // whole chain: how long to wait, and how many retries. A member that sets
-        // its own value wins, so these are "fill the gaps", never overrides.
-        // Context window and selection strategy live here too — the strategy has
-        // no per-member meaning, and a chain-wide window override is occasionally
-        // the point of a tier.
-        h(Disclosure, {
-          title: t('tiers.defaults'),
-          digest: [
-            tier.idleTimeoutMs === undefined ? `${t('member.timeout')} ${t('member.defaultAuto')}` : `${t('member.timeout')} ${toSeconds(tier.idleTimeoutMs)}${t('member.timeoutUnit')}`,
-            tier.attempts === undefined ? `${t('member.attempts')} ${t('member.defaultAuto')}` : `${t('member.attempts')} ${tier.attempts}`,
-          ].join(' · '),
-        },
-        h('div', { className: 'mr-member-knobs' },
-
-          h(Field, { label: t('member.timeout'), hint: t('tiers.timeoutHint') },
-            h(NumberInput, {
-              // A tier has nothing above it but the global default, so `0` here
-              // clears the tier value and lets that apply — unlike a member,
-              // where `0` genuinely means "no limit".
-              value: tier.idleTimeoutMs === undefined ? undefined : toSeconds(tier.idleTimeoutMs),
-              ariaLabel: `${tier.name} ${t('member.timeout')}`,
-              min: 0, max: toSeconds(60_000), unit: t('member.timeoutUnit'),
-              placeholder: t('tiers.useGlobal'),
-              onChange: seconds => {
-                const { idleTimeoutMs: _drop, ...rest } = tier
-                onChange(seconds === undefined || seconds === 0 ? rest : { ...rest, idleTimeoutMs: fromSeconds(seconds) })
-              },
-            })),
-          h(Field, { label: t('member.attempts'), hint: t('tiers.attemptsHint') },
-            h(NumberInput, {
-              value: tier.attempts, ariaLabel: `${tier.name} ${t('member.attempts')}`,
-              min: 0, max: 5, placeholder: t('tiers.useGlobal'),
-              onChange: attempts => {
-                const { attempts: _drop, ...rest } = tier
-                onChange(attempts === undefined || attempts === 0 ? rest : { ...rest, attempts })
-              },
-            })),
-          h(Field, { label: t('member.context'), hint: t('member.contextHint') },
-            h(TokenInput, {
-              value: tier.contextWindow, ariaLabel: `${tier.name} ${t('member.context')}`,
-              placeholder: t('member.defaultAuto'),
-              onChange: contextWindow => {
-                const { contextWindow: _drop, ...rest } = tier
-                onChange(contextWindow === undefined ? rest : { ...rest, contextWindow })
-              },
-            })),
-          h(Field, { label: t('tiers.strategy'), hint: t('tiers.strategyHint') },
-            h('select', {
-              value: tier.contextStrategy ?? 'order', 'aria-label': `${tier.name} ${t('tiers.strategy')}`,
-              onChange: event => {
-                const { contextStrategy: _drop, ...rest } = tier
-                // The default is stored by absence, so a clean document stays clean.
-                onChange(event.target.value === 'order' ? rest : { ...rest, contextStrategy: event.target.value })
-              },
-            },
-            h('option', { value: 'order' }, t('tiers.strategyOrder')),
-            h('option', { value: 'roomy' }, t('tiers.strategyRoomy')))))),
-        tier.members.length === 0
-          ? h('div', { className: 'mr-empty' }, h('p', null, t('tiers.membersEmpty')))
-          : h('div', { className: 'mr-members' }, tier.members.map((member, memberIndex) => h(MemberRow, {
-            key: `${member.provider}/${member.model}`,
-            member, index: memberIndex, total: tier.members.length, catalog, probe,
-            onChange: next => onChange({ ...tier, members: replaceAt(tier.members, memberIndex, next) }),
-            onMove: delta => onChange({ ...tier, members: move(tier.members, memberIndex, delta) }),
-            onRemove: () => onChange({ ...tier, members: tier.members.filter((_, position) => position !== memberIndex) }),
-          }))),
-        h('div', null, h('button', { type: 'button', onClick: onAddMember }, `+ ${t('tiers.addMember')}`)))
+                type: 'text', value: tier.name, 'aria-label': t('tiers.name'), placeholder: t('tiers.namePlaceholder'),
+                onChange: event => onChange({ ...tier, name: event.target.value }),
+              })),
+            h('div', { className: 'mr-actions' },
+              h('label', { className: 'mr-row' },
+                h('input', {
+                  type: 'checkbox', checked: tier.enabled !== false,
+                  onChange: event => onChange({ ...tier, enabled: event.target.checked }),
+                }),
+                h('span', { style: { fontSize: '12px' } }, tier.enabled === false ? t('tiers.disabled') : t('tiers.enabled'))),
+              h('button', { type: 'button', className: 'mr-icon', disabled: index === 0, title: t('tiers.up'), 'aria-label': t('tiers.up'), onClick: () => onMove(-1) }, '↑'),
+              h('button', { type: 'button', className: 'mr-icon', disabled: index === total - 1, title: t('tiers.down'), 'aria-label': t('tiers.down'), onClick: () => onMove(1) }, '↓'),
+              h('button', { type: 'button', className: 'mr-icon mr-danger', title: t('tiers.remove'), 'aria-label': t('tiers.remove'), onClick: onRemove }, '✕'))),
+          // Tier-level defaults for the two knobs that are worth applying to a
+          // whole chain: how long to wait, and how many retries. A member that
+          // sets its own value wins, so these fill the gaps, never override.
+          h(Disclosure, {
+            title: t('tiers.defaults'),
+            digest: [
+              tier.idleTimeoutMs === undefined ? t('member.defaultAuto') : `${toSeconds(tier.idleTimeoutMs)}${t('member.timeoutUnit')}`,
+              tier.attempts === undefined ? t('member.defaultAuto') : String(tier.attempts),
+            ].join(' · '),
+          },
+          h('div', { className: 'mr-member-knobs' },
+            h(Field, { label: t('member.timeout') },
+              h(NumberInput, {
+                // A tier has nothing above it but the global default, so `0` here
+                // clears the tier value and lets that apply — unlike a member,
+                // where `0` genuinely means "no limit".
+                value: tier.idleTimeoutMs === undefined ? undefined : toSeconds(tier.idleTimeoutMs),
+                ariaLabel: `${tier.name} ${t('member.timeout')}`,
+                min: 0, max: toSeconds(60_000), unit: t('member.timeoutUnit'),
+                placeholder: t('tiers.useGlobal'),
+                onChange: seconds => {
+                  const { idleTimeoutMs: _drop, ...rest } = tier
+                  onChange(seconds === undefined || seconds === 0 ? rest : { ...rest, idleTimeoutMs: fromSeconds(seconds) })
+                },
+              })),
+            h(Field, { label: t('member.attempts') },
+              h(NumberInput, {
+                value: tier.attempts, ariaLabel: `${tier.name} ${t('member.attempts')}`,
+                min: 0, max: 5, placeholder: t('tiers.useGlobal'),
+                onChange: attempts => {
+                  const { attempts: _drop, ...rest } = tier
+                  onChange(attempts === undefined || attempts === 0 ? rest : { ...rest, attempts })
+                },
+              })),
+            h(Field, { label: t('member.context') },
+              h(TokenInput, {
+                value: tier.contextWindow, ariaLabel: `${tier.name} ${t('member.context')}`,
+                placeholder: t('member.defaultAuto'),
+                onChange: contextWindow => {
+                  const { contextWindow: _drop, ...rest } = tier
+                  onChange(contextWindow === undefined ? rest : { ...rest, contextWindow })
+                },
+              })))),
+          h('div', { className: 'mr-row' }, h('h3', { style: { fontSize: '13px' } }, t('tiers.members'))),
+          tier.members.length === 0
+            ? h('div', { className: 'mr-empty' }, h('p', null, t('tiers.membersEmpty')))
+            : h('div', { className: 'mr-members' }, tier.members.map((member, memberIndex) => h(MemberRow, {
+              key: `${member.provider}/${member.model}`,
+              member, index: memberIndex, total: tier.members.length, catalog, probe,
+              onChange: next => onChange({ ...tier, members: replaceAt(tier.members, memberIndex, next) }),
+              onMove: delta => onChange({ ...tier, members: move(tier.members, memberIndex, delta) }),
+              onRemove: () => onChange({ ...tier, members: tier.members.filter((_, position) => position !== memberIndex) }),
+            }))),
+          h('div', null, h('button', { type: 'button', onClick: onAddMember }, `+ ${t('tiers.addMember')}`))))
     }
 
     // ── request log ─────────────────────────────────────────────────────────
@@ -1293,25 +1327,40 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
       }, [])
       useEffect(() => { void load() }, [load])
 
+      /**
+       * One button for both cases.
+       *
+       * With unsaved edits it writes, then reloads, so the page shows what the
+       * Host actually stored rather than the draft. With nothing to save it just
+       * reloads — which is what the old "Reload" button did, minus the extra
+       * button. A separate "Discard" is gone too: it only made sense while the
+       * save was already explicit elsewhere, and its state was a third thing to
+       * reason about.
+       */
       const save = useCallback(async () => {
-        if (draft === undefined) return
-        setSaving(true)
-        setError(undefined)
-        setNotice(undefined)
-        try {
-          // Order is the picker's order, so the array position is normalized
-          // here instead of asking the user to think about an `order` field.
-          const payload = { ...draft, tiers: draft.tiers.map((tier, index) => ({ ...tier, order: index })) }
-          const result = await api('/settings', { method: 'POST', body: JSON.stringify({ settings: payload }) })
-          setState(current => ({ ...current, settings: result.settings }))
-          setDraft(clone(result.settings))
-          setNotice(t('saved'))
-        } catch (cause) {
-          setError(`${t('saveFailed')}：${String(cause.message ?? cause)}`)
-        } finally {
+        if (dirtyRef.current && draft !== undefined) {
+          setSaving(true)
+          setError(undefined)
+          setNotice(undefined)
+          try {
+            // Order is the picker's order, so the array position is normalized
+            // here instead of asking the user to think about an `order` field.
+            const payload = { ...draft, tiers: draft.tiers.map((tier, index) => ({ ...tier, order: index })) }
+            const result = await api('/settings', { method: 'POST', body: JSON.stringify({ settings: payload }) })
+            setState(current => ({ ...current, settings: result.settings }))
+            setDraft(clone(result.settings))
+            setNotice(t('saved'))
+          } catch (cause) {
+            setError(`${t('saveFailed')}：${String(cause.message ?? cause)}`)
+            setSaving(false)
+            return
+          }
           setSaving(false)
         }
-      }, [draft])
+        // Always finish with a fresh read: after a write it is the source of
+        // truth, and with no write it is the manual refresh the button offers.
+        await load()
+      }, [draft, load])
 
       // Defensive on purpose: a malformed catalog must degrade to "no models to
       // pick from", never to a thrown panel. `Array.isArray` also rejects the
@@ -1388,9 +1437,17 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 
       return h('div', { className: 'mr-root' },
         h('style', null, CSS),
-        h('div', { className: 'mr-head' },
+        // Title and the save control share one row: the button belongs where a
+        // reader looks for it, not below a long form. `intro` was deleted — a
+        // paragraph describing what the page obviously does is noise.
+        h('div', { className: 'mr-spread' },
           h('h2', null, t('title')),
-          h('p', null, t('intro'))),
+          h('div', { className: 'mr-actions' },
+            dirtyRef.current ? h('small', { className: 'mr-dirty' }, t('unsaved')) : null,
+            h('button', {
+              type: 'button', className: 'mr-primary', disabled: saving,
+              onClick: () => { void save() },
+            }, saving ? t('saving') : dirtyRef.current ? t('saveAndReload') : t('reload')))),
 
         // Three tabs, because these are three different questions asked at
         // different times: what does my picker look like (配置), how should the
@@ -1422,9 +1479,12 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
               onClick: () => {
                 const name = lang() === 'zh' ? '新挡位' : 'New tier'
                 const id = makeTierId(name, settings.tiers.map(tier => tier.id))
+                // Inserted first, not last. A new tier appended below the fold
+                // of a long list looked like the button did nothing; putting it
+                // at the top also matches how the picker reads.
                 setDraft(current => ({
                   ...current,
-                  tiers: [...current.tiers, { id, name, enabled: true, order: current.tiers.length, members: [] }],
+                  tiers: [{ id, name, enabled: true, order: 0, members: [] }, ...current.tiers],
                 }))
               },
             }, `+ ${t('tiers.add')}`)),
@@ -1508,7 +1568,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
         !shown('settings') ? null : h('section', { className: 'mr-card' },
           h('h3', null, t('options.title')),
           h('div', { className: 'mr-member-knobs' },
-            h(Field, { label: t('options.timeout'), hint: t('options.timeoutHint') },
+            h(Field, { label: t('options.timeout') },
               h(NumberInput, {
                 value: toSeconds(settings.defaultIdleTimeoutMs), min: 0, max: toSeconds(60_000), unit: t('units.sec'),
                 ariaLabel: t('options.timeout'),
@@ -1606,22 +1666,6 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
                     .map(model => h('div', { key: `${group.id}/${model.id}`, className: 'mr-preview-row' },
                       h('span', { className: 'mr-check' }, ''),
                       h('span', null, model.name ?? model.id))))))),
-
-        // ── actions ──
-        // Only on the settings tab: the log has its own refresh and clear, and a
-        // Save that writes nothing from a read-only view is a trap.
-        !shown('configure') && !shown('settings') ? null : h('div', { className: 'mr-sticky-actions' },
-          h('div', { className: 'mr-actions' },
-            h('button', {
-              type: 'button', className: 'mr-primary', disabled: saving || !dirtyRef.current,
-              onClick: () => { void save() },
-            }, saving ? t('saving') : t('save')),
-            h('button', {
-              type: 'button', disabled: saving || !dirtyRef.current,
-              onClick: () => { setDraft(state === undefined ? undefined : clone(state.settings)); setError(undefined); setNotice(undefined) },
-            }, t('reset')),
-            h('button', { type: 'button', disabled: saving, onClick: () => { void load() } }, t('reload'))),
-          dirtyRef.current ? h('small', null, t('unsaved')) : null),
 
         picker === undefined ? null : h(ModelPicker, {
           catalog: catalog.filter(group => group.id !== ROUTER_PROVIDER),

@@ -51,13 +51,15 @@ test('a token budget accepts the short forms people type', () => {
   // or the two ways of writing one value would disagree.
   assert.equal(parseTokenBudget(131_072), 131_072)
   assert.equal(parseTokenBudget('131072'), 131_072)
-  assert.equal(parseTokenBudget('128k'), 128 * 1_024)
-  assert.equal(parseTokenBudget('128K'), 128 * 1_024)
-  assert.equal(parseTokenBudget('128 k'), 128 * 1_024)
-  assert.equal(parseTokenBudget('1m'), 1_048_576)
-  assert.equal(parseTokenBudget('1.5m'), 1_572_864)
-  // Binary, not decimal: a model advertising "1M context" means 1,048,576.
-  assert.notEqual(parseTokenBudget('1m'), 1_000_000)
+  // Decimal multipliers, uppercase accepted, so what the field shows is what it
+  // means: `1m` is a million, not 1,048,576.
+  assert.equal(parseTokenBudget('128k'), 128_000)
+  assert.equal(parseTokenBudget('128K'), 128_000)
+  assert.equal(parseTokenBudget('128 k'), 128_000)
+  assert.equal(parseTokenBudget('1m'), 1_000_000)
+  assert.equal(parseTokenBudget('1M'), 1_000_000)
+  assert.equal(parseTokenBudget('1.5m'), 1_500_000)
+  assert.equal(parseTokenBudget('256k'), 256_000)
   assert.equal(parseTokenBudget(''), undefined)
   assert.equal(parseTokenBudget('abc'), undefined)
   assert.equal(parseTokenBudget('0'), undefined)
@@ -65,24 +67,36 @@ test('a token budget accepts the short forms people type', () => {
   assert.equal(parseTokenBudget(undefined), undefined)
 })
 
-test('a token budget is displayed in the shortest exact form', () => {
-  assert.equal(formatTokenBudget(131_072), '128k')
-  assert.equal(formatTokenBudget(1_048_576), '1m')
-  assert.equal(formatTokenBudget(1_000_000), '1000000', 'not a clean multiple, so it stays exact')
-  assert.equal(formatTokenBudget(100_000), '100000', 'not a multiple of 1024')
+test('a token budget is displayed the way a person would say it', () => {
+  // The complaint that drove this: a context field reading `1000000` makes you
+  // count zeros. It must never fall back to a digit string.
+  assert.equal(formatTokenBudget(128_000), '128k')
+  assert.equal(formatTokenBudget(100_000), '100k')
+  assert.equal(formatTokenBudget(256_000), '256k')
+  assert.equal(formatTokenBudget(1_000_000), '1m')
+  assert.equal(formatTokenBudget(4_000_000), '4m')
   assert.equal(formatTokenBudget(undefined), '')
-  // A shown value must read back as the same number, or the field rewrites itself.
-  for (const tokens of [131_072, 1_048_576, 100_000, 32_768, 1_024, 4_000_000]) {
+  // A provider's binary number is shown on the decimal scale rather than as
+  // digits; typing the shown text back is a rounding, which is the accepted trade.
+  assert.equal(formatTokenBudget(131_072), '131k')
+  assert.equal(formatTokenBudget(262_144), '262k')
+  assert.equal(formatTokenBudget(1_048_576), '1m')
+  // Exact thousands round-trip unchanged.
+  for (const tokens of [128_000, 100_000, 256_000, 1_000_000, 4_000_000, 32_000]) {
     assert.equal(parseTokenBudget(formatTokenBudget(tokens)), tokens, `round-trip for ${tokens}`)
   }
+  // The short forms are decimal, so what the field shows is what it means.
+  assert.equal(parseTokenBudget('1m'), 1_000_000)
+  assert.equal(parseTokenBudget('256k'), 256_000)
+  assert.equal(parseTokenBudget('1.5m'), 1_500_000)
 })
 
 test('a short-form budget reaches the member and the tier', () => {
   const member = normalizeMember({ provider: 'p', model: 'm', contextWindow: '128k', maxTokens: '1m' })
-  assert.equal(member.contextWindow, 131_072)
-  assert.equal(member.maxTokens, 1_048_576)
+  assert.equal(member.contextWindow, 128_000)
+  assert.equal(member.maxTokens, 1_000_000)
   const tier = normalizeTier({ id: 't', name: 'T', contextWindow: '1m', members: [{ provider: 'p', model: 'm' }] })
-  assert.equal(tier.contextWindow, 1_048_576)
+  assert.equal(tier.contextWindow, 1_000_000)
   // The clamp still applies after parsing.
   assert.equal(normalizeMember({ provider: 'p', model: 'm', contextWindow: '1' }).contextWindow, 1_024)
   assert.equal(normalizeMember({ provider: 'p', model: 'm', contextWindow: '99m' }).contextWindow, 4_000_000)

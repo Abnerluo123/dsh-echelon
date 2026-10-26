@@ -68,11 +68,10 @@ Requires **DSH ≥ 0.2.0-rc.1** and **Node ≥ 22.14.0**. **Restart `dsh`** afte
 - **Tier defaults**: one timeout and retry count for the whole chain, used by members that do not set their own.
 - **Default level for new chats**: follow the model, or pin one of the five levels.
 - **Reasoning mapping switch**: on means one five-level vocabulary in the picker, translated onto each member at dispatch (nearest published level, or the model's default when it publishes none); off shows each model's own levels and forwards them as written. The per-member control in the editor always offers only that model's own levels — it pins one member, so it must not name a level that member cannot honour.
-- **Selection strategy**: chain order (default) or most free space.
 - **Image routing**: pick a member that can see; only the current turn's image counts (an older image stops affecting selection).
 - **Request log**: each turn shows **tier → real model**, how the level was translated (`xhigh → max`, or not sent at all), every member tried, why each was skipped, duration and tokens. In memory, switchable off.
-- **Context shorthand**: `128k` and `1m` instead of counting zeros; `k`=1024, `m`=1048576.
-- **Saves apply immediately**: no restart, no page reload.
+- **Context shorthand**: `1m`, `256k`, `128k` or plain digits — no counting zeros. `k`=1000, `m`=1000000 (decimal, so what the field shows is what it means).
+- **Saves apply immediately**: no restart, no page reload. One button top-right: save-and-reload when there are edits, plain reload when there are none.
 - **Settings file**: `$DSH_HOME/model-router/settings.json`, hand-editable (and `"128k"` is accepted there too); writes go through a temp file and a rename.
 
 ### How the timeout is decided
