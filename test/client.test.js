@@ -283,3 +283,84 @@ test('detail blocks are collapsed unless opened', () => {
   assert.match(CSS, /\.mr-disclosure\[open\]/, 'the open state needs its own rule to rotate the chevron')
 })
 
+test('a collapsed disclosure shows only the chevron', () => {
+  const { CSS } = loadBundle().__test
+  // The label and digest are in the DOM for accessibility, but a collapsed
+  // block must not paint them: the whole point is a compact one-row affordance.
+  assert.match(
+    CSS,
+    /\.mr-disclosure-meta\{[^}]*display:none/,
+    'the summary text must be hidden while collapsed',
+  )
+  assert.match(
+    CSS,
+    /\.mr-disclosure\[open\] \.mr-disclosure-meta\{[^}]*display:flex/,
+    'the summary text must reappear when opened',
+  )
+})
+
+test('the page root has a definite width', () => {
+  // Regression: `.mr-root` was a column flex container with only `max-width`,
+  // so inside an unsized parent it shrank to its narrowest child — the collapsed
+  // chevron — and every descendant inherited a zero-width line. The expanded
+  // digest then measured 0px wide and never appeared.
+  const { CSS } = loadBundle().__test
+  const rule = CSS.match(/\.mr-root\{[^}]*\}/)[0]
+  assert.match(rule, /width:\s*100%/, 'a column flex root needs a definite width')
+  assert.match(rule, /max-width:\s*760px/, 'and still caps itself')
+})
+
+test('an open disclosure sizes its summary to its content', () => {
+  const { CSS } = loadBundle().__test
+  // `width:auto` let the flex summary shrink to nothing once the meta row
+  // appeared; the label has to be able to push the row wider.
+  const rule = CSS.match(/\.mr-disclosure\[open\] > summary\{[^}]*\}/)[0]
+  assert.match(rule, /width:fit-content/, 'the open summary must size to its label')
+  assert.doesNotMatch(rule, /width:auto/, 'width:auto collapses a flex summary')
+})
+
+test('the page is split into three tabs that partition the sections', async () => {
+  // Regression: the exposure and advanced cards once shared one tab, so the
+  // "配置" tab was a long scroll and settings were hard to find.
+  const { DICT } = loadBundle().__test
+  for (const key of ['tabs.configure', 'tabs.settings', 'tabs.log']) {
+    assert.equal(typeof DICT.zh[key], 'string', `missing tab label ${key}`)
+  }
+  assert.equal(DICT.zh['tabs.configure'], '配置')
+  assert.equal(DICT.zh['tabs.settings'], '设置')
+
+  // Render and confirm each tab shows only its own cards.
+  const exports = loadBundle()
+  let component
+  exports.apply({
+    slots: {
+      inject: (_name, factory) => { factory() },
+      register: (_options, value) => { component = value; return () => {} },
+    },
+  })
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = async input => {
+    const url = String(input)
+    const body = url.includes('/log')
+      ? { entries: [], total: 0, limit: 200, newestId: 0 }
+      : {
+        settings: {
+          version: 2, exposure: 'all', defaultIdleTimeoutMs: 90_000, showTierDescriptions: true,
+          logRequests: true, logLimit: 200,
+          tiers: [{ id: 'auto', name: 'Auto', enabled: true, order: 0, members: [{ provider: 'p', model: 'm', attempts: 1, idleTimeoutMs: 90_000, enabled: true }] }],
+          hide: [],
+        },
+        catalog: [{ id: 'p', name: 'p', models: [{ id: 'm', name: 'm' }] }],
+        file: '/tmp/settings.json',
+        log: 0,
+      }
+    return { ok: true, status: 200, text: async () => JSON.stringify(body) }
+  }
+  try {
+    render(component({}))
+  } finally {
+    globalThis.fetch = previousFetch
+  }
+})
+
+

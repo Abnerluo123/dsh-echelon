@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.2
+
+### Settings page navigation
+
+Three tabs now: **配置**（模型选择器的外观）、**设置**（路由行为和日志保留）、**调用日志**。之前「模型选择器的显示」和「高级」在一个页签里，用户找 behavioural settings 很别扭；三个 tab 把问题拆成「我的 picker 长什么样？」「怎么跑？」「刚刚发生了啥？」，更符合用户的直觉。
+
+### Compact disclosures
+
+折叠块默认关闭时只保留一个箭头：宽度约 27px、高度约 24px，一条紧凑行。标签和当前值在 DOM 中仍存在，被 CSS 隐藏，并用 `aria-label` 提供给读屏软件——因此无障碍名称还在，只是不占用空间。展开后摘要出现，文字才真正可见。
+
+### Dark mode and contrast
+
+依然坚持测量而非肉眼判断：两套调色板的 computed styles 都正确，表面用宿主层级色而不是字面色。
+
 ## 1.1.1
 
 ### Settings page

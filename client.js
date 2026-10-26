@@ -122,6 +122,7 @@ window.__ModuleLoader__.load({
         'options.loggingHint': '只存在内存里，重启即清空。用来查这一轮到底用了哪个模型、为什么换掉前一个。',
         'options.logLimit': '保留条数',
 
+        'tabs.configure': '配置',
         'tabs.settings': '设置',
         'tabs.log': '调用日志',
 
@@ -243,6 +244,7 @@ window.__ModuleLoader__.load({
         'options.loggingHint': 'In memory only; cleared by a restart. Shows which model served each turn and why earlier ones were dropped.',
         'options.logLimit': 'Entries kept',
 
+        'tabs.configure': 'Configure',
         'tabs.settings': 'Settings',
         'tabs.log': 'Request log',
 
@@ -305,7 +307,7 @@ window.__ModuleLoader__.load({
     //      rather than inventing a page colour, so nesting reads correctly in
     //      both schemes.
     const CSS = `
-.mr-root{max-width:760px;display:flex;flex-direction:column;gap:20px;color:var(--dsw-alias-label-primary)}
+.mr-root{width:100%;max-width:760px;display:flex;flex-direction:column;gap:20px;color:var(--dsw-alias-label-primary)}
 .mr-root h2{margin:0;font-size:22px;line-height:30px;font-weight:600}
 .mr-root h3{margin:0;font-size:15px;line-height:22px;font-weight:600}
 .mr-root p{margin:0;font-size:13px;line-height:21px;color:var(--dsw-alias-label-secondary)}
@@ -378,18 +380,23 @@ window.__ModuleLoader__.load({
    settings scroller, which is what made the buttons cover the member text. */
 .mr-sticky-actions{position:static;margin-top:2px;background:transparent;border-top:1px solid var(--dsw-alias-border-l2);padding:12px 0 4px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .mr-tabs{display:flex;gap:4px;border-bottom:1px solid var(--dsw-alias-border-l2);padding-bottom:2px}
-/* Collapsible detail block. The summary row is the whole affordance: a chevron,
-   a label, and a one-line digest so a collapsed block still says what it hides. */
-.mr-disclosure{border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);overflow:hidden}
-.mr-disclosure > summary{display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;list-style:none;font-size:12px;color:var(--dsw-alias-label-secondary);user-select:none}
+/* Collapsible detail block. Collapsed it is a single chevron hugging the card
+   edge, so a member reads as two tight rows instead of a paragraph of summary
+   text. The label and current values appear once it is open, which is the only
+   moment they are worth the height. */
+.mr-disclosure{border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2);overflow:hidden}
+.mr-disclosure > summary{display:flex;align-items:center;gap:6px;padding:3px 8px;cursor:pointer;list-style:none;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);user-select:none;width:fit-content;border-radius:6px}
 .mr-disclosure > summary::-webkit-details-marker{display:none}
 .mr-disclosure > summary:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .mr-disclosure > summary:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
-.mr-disclosure-chevron{flex:none;width:12px;transition:transform .15s ease;color:var(--dsw-alias-label-tertiary)}
+.mr-disclosure-chevron{flex:none;width:11px;text-align:center;transition:transform .15s ease;color:var(--dsw-alias-label-tertiary);font-size:13px}
 .mr-disclosure[open] .mr-disclosure-chevron{transform:rotate(90deg)}
+.mr-disclosure-meta{display:none;align-items:baseline;gap:6px;min-width:0}
+.mr-disclosure[open] .mr-disclosure-meta{display:flex}
+.mr-disclosure[open] > summary{width:fit-content;max-width:100%}
 .mr-disclosure-title{font-weight:500;color:var(--dsw-alias-label-primary);flex:none}
 .mr-disclosure-digest{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}
-.mr-disclosure-body{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:2px 12px 12px;border-top:1px solid var(--dsw-alias-border-l2)}
+.mr-disclosure-body{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:4px 12px 12px}
 .mr-disclosure-body.mr-plain{display:block;padding-top:10px}
 @media(prefers-reduced-motion:reduce){.mr-disclosure-chevron{transition:none}}
 .mr-tab{border:none;border-radius:8px 8px 0 0;background:transparent;padding:7px 14px;font-size:13px;color:var(--dsw-alias-label-secondary);cursor:pointer}
@@ -414,6 +421,28 @@ window.__ModuleLoader__.load({
 `
 
     // ── helpers ─────────────────────────────────────────────────────────────
+
+    /**
+     * The page's sections, declared once so the tab strip and the body cannot
+     * drift apart.
+     *
+     * The split follows the questions a user actually arrives with:
+     *   配置 — what does my model picker look like? (tiers, exposure)
+     *   设置 — how should routing behave? (defaults, log retention, settings file)
+     *   调用日志 — what happened on that turn?
+     */
+    const TABS = [
+      { id: 'configure', label: 'tabs.configure' },
+      { id: 'settings', label: 'tabs.settings' },
+      { id: 'log', label: 'tabs.log' },
+    ]
+
+    /** The sections shown on one tab. */
+    const SECTIONS = {
+      configure: ['tiers', 'exposure'],
+      settings: ['advanced'],
+      log: [],
+    }
 
     /** Call the plugin's own API. */
     async function api(path, options = {}) {
@@ -494,23 +523,28 @@ window.__ModuleLoader__.load({
     /**
      * A collapsed-by-default block for the knobs most people never touch.
      *
-     * Retry count, timeout, effort, and budgets are per-member settings that are
-     * usually left alone; showing eight inputs per member made a three-member
-     * tier taller than the settings panel. The summary row therefore carries the
-     * *current* values as a digest, so a collapsed block still answers "what is
-     * this member set to" without opening it.
+     * Collapsed, it is just a small chevron: eight inputs per member made a
+     * three-member tier taller than the settings panel, and the summary text was
+     * repeating itself down the card. Expanded, the label and the current
+     * values appear, because that is the moment you want to know what is set.
+     *
+     * The label survives collapsing as `aria-label` on the summary. Hiding it
+     * visually but dropping it from the accessibility tree would leave a
+     * nameless control that a screen reader can only announce as "button".
      *
      * Uses native `<details>` rather than React state on purpose: the browser
      * owns the open/closed state, it is keyboard-accessible for free, and it
      * survives a re-render without the page having to remember anything.
-     * @param {{title?: string, digest?: string, children: any, plain?: boolean}} props - digest text and body.
+     * @param {{title?: string, digest?: string, children: any, plain?: boolean}} props - label, current values, and body.
      */
     function Disclosure({ title, digest, children, plain }) {
+      const name = [title, digest].filter(part => part !== undefined && part !== '').join('：')
       return h('details', { className: 'mr-disclosure' },
-        h('summary', null,
+        h('summary', { 'aria-label': name === '' ? undefined : name, title: name },
           h('span', { className: 'mr-disclosure-chevron', 'aria-hidden': 'true' }, '›'),
-          title === undefined ? null : h('span', { className: 'mr-disclosure-title' }, title),
-          digest === undefined || digest === '' ? null : h('span', { className: 'mr-disclosure-digest' }, digest)),
+          h('span', { className: 'mr-disclosure-meta', 'aria-hidden': 'true' },
+            title === undefined ? null : h('span', { className: 'mr-disclosure-title' }, title),
+            digest === undefined || digest === '' ? null : h('span', { className: 'mr-disclosure-digest' }, digest))),
         h('div', { className: plain === true ? 'mr-disclosure-body mr-plain' : 'mr-disclosure-body' }, children))
     }
 
@@ -953,7 +987,9 @@ window.__ModuleLoader__.load({
       const [picker, setPicker] = useState(undefined)
       const [probe, setProbe] = useState({})
       const [copied, setCopied] = useState(false)
-      const [tab, setTab] = useState('settings')
+      // Opens on 配置: the tier list is what the page is for, and it is where a
+      // first-time user has to start before anything else here matters.
+      const [tab, setTab] = useState('configure')
       const dirtyRef = useRef(false)
       dirtyRef.current = draft !== undefined && state !== undefined && JSON.stringify(draft) !== JSON.stringify(state.settings)
 
@@ -1057,6 +1093,9 @@ window.__ModuleLoader__.load({
         return h('div', { className: 'mr-root' }, h('style', null, CSS), h('p', { role: 'status' }, t('loading')))
       }
 
+      /** Whether one tab's sections are the ones being rendered. */
+      const shown = id => tab === id
+
       const exposure = settings.exposure
       const tierOnlyBlocked = exposure === 'tiers' && !anyDispatchable
 
@@ -1066,19 +1105,16 @@ window.__ModuleLoader__.load({
           h('h2', null, t('title')),
           h('p', null, t('intro'))),
 
-        // Two tabs, because "what is my menu" and "what happened on that turn"
-        // are different questions asked at different times.
+        // Three tabs, because these are three different questions asked at
+        // different times: what does my picker look like (配置), how should the
+        // router behave (设置), and what actually happened on that turn (日志).
         h('div', { className: 'mr-tabs', role: 'tablist' },
-          h('button', {
-            type: 'button', role: 'tab', 'aria-selected': tab === 'settings',
-            className: `mr-tab${tab === 'settings' ? ' is-active' : ''}`,
-            onClick: () => setTab('settings'),
-          }, t('tabs.settings')),
-          h('button', {
-            type: 'button', role: 'tab', 'aria-selected': tab === 'log',
-            className: `mr-tab${tab === 'log' ? ' is-active' : ''}`,
-            onClick: () => setTab('log'),
-          }, t('tabs.log'))),
+          TABS.map(entry => h('button', {
+            key: entry.id,
+            type: 'button', role: 'tab', 'aria-selected': tab === entry.id,
+            className: `mr-tab${tab === entry.id ? ' is-active' : ''}`,
+            onClick: () => setTab(entry.id),
+          }, t(entry.label)))),
 
         error === undefined ? null : h('div', { className: 'mr-alert', role: 'alert' }, error),
         notice === undefined ? null : h('p', { role: 'status', className: 'mr-note' }, notice),
@@ -1088,7 +1124,7 @@ window.__ModuleLoader__.load({
           : null,
 
         // ── tiers ──
-        tab === 'log' ? null : h('section', { className: 'mr-card' },
+        !shown('configure') ? null : h('section', { className: 'mr-card' },
           h('div', { className: 'mr-spread' },
             h('div', { className: 'mr-head', style: { gap: '4px' } },
               h('h3', null, t('tiers.title')),
@@ -1126,7 +1162,7 @@ window.__ModuleLoader__.load({
             : null),
 
         // ── exposure ──
-        tab === 'log' ? null : h('section', { className: 'mr-card' },
+        !shown('configure') ? null : h('section', { className: 'mr-card' },
           h('h3', null, t('expose.title')),
           h('p', null, t('expose.hiding', { hidden: hiddenCounts.hidden, total: hiddenCounts.total })),
           tierOnlyBlocked ? h('div', { className: 'mr-note', role: 'status' }, t('expose.blocked')) : null,
@@ -1182,7 +1218,7 @@ window.__ModuleLoader__.load({
             })))),
 
         // ── advanced ──
-        tab === 'log' ? null : h('section', { className: 'mr-card' },
+        !shown('settings') ? null : h('section', { className: 'mr-card' },
           h('h3', null, t('options.title')),
           h('div', { className: 'mr-member-knobs' },
             h(Field, { label: t('options.timeout'), hint: t('options.timeoutHint') },
@@ -1228,7 +1264,7 @@ window.__ModuleLoader__.load({
               }, copied ? t('options.copied') : t('options.copy'))))),
 
         // ── preview ──
-        tab === 'log' ? null : h('section', { className: 'mr-card' },
+        !shown('settings') ? null : h('section', { className: 'mr-card' },
           h('h3', null, t('preview.title')),
           h('div', { className: 'mr-preview' },
             h('div', { className: 'mr-preview-group' }, t('preview.tiers')),
@@ -1256,7 +1292,7 @@ window.__ModuleLoader__.load({
         // ── actions ──
         // Only on the settings tab: the log has its own refresh and clear, and a
         // Save that writes nothing from a read-only view is a trap.
-        tab === 'log' ? null : h('div', { className: 'mr-sticky-actions' },
+        shown('log') ? null : h('div', { className: 'mr-sticky-actions' },
           h('div', { className: 'mr-actions' },
             h('button', {
               type: 'button', className: 'mr-primary', disabled: saving || !dirtyRef.current,
