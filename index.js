@@ -164,6 +164,7 @@ async function liveCatalog(ctx) {
             ...(model.description === undefined ? {} : { description: model.description }),
             ...(info.context === undefined ? {} : { contextWindow: info.context.contextWindow }),
             ...(info.reasoning === undefined ? {} : { efforts: info.reasoning.efforts.map(effort => effort.id) }),
+            ...(info.inputModalities === undefined ? {} : { inputModalities: [...info.inputModalities] }),
           }
         } catch {
           return { id: model.id, name: model.name }

@@ -31,13 +31,18 @@ import {
   ROUTER_PROVIDER,
   isRetryable,
   orderByContext,
+  splitByModality,
+  unionModalities,
   retryDelay,
   tierChain,
 } from './config.js'
 import { EFFORT_IDS, mapEffort, supportsLadder } from './effort.js'
 import { RequestLog, usageOf } from './log.js'
 import { SettingsStore } from './store.js'
-import { estimateRequestTokens } from './tokens.js'
+import { estimateRequestTokens, requestHasImage } from './tokens.js'
+
+/** How long a resolved model's metadata is reused, in milliseconds. */
+const INFO_TTL_MS = 30_000
 
 /** How many member attempts one turn may spend before the chain is declared dead. */
 const MAX_ATTEMPTS_PER_TURN = 64
@@ -210,6 +215,8 @@ export class RouterAdapter extends Adapter {
   #logger
   /** @type {RequestLog} */
   #log
+  /** @type {Map<string, {at: number, info: object | undefined}>} */
+  #info = new Map()
 
   /**
    * @param {object} options - wiring supplied by the plugin entry.
@@ -268,17 +275,26 @@ export class RouterAdapter extends Adapter {
    */
   async listModels(provider) {
     const { settings } = this.#store.read()
-    return settings.tiers
+    const llm = this.ctx?.llm
+    const tiers = settings.tiers
       .slice()
       .sort((left, right) => left.order - right.order)
       .filter(tier => tier.enabled)
-      .map(tier => ({
+    return Promise.all(tiers.map(async tier => {
+      // Advertise 'image' as soon as one member can see, mirroring the window
+      // rule: claim what the chain can do, then route each request to a member
+      // that can do it. A text-only advertisement here makes DSH flatten every
+      // image before this adapter is ever consulted.
+      const chain = tierChain(tier, this.#providers())
+      const infos = await Promise.all(chain.map(member => this.#infoOf(llm, member)))
+      return {
         provider,
         id: tier.id,
         name: tier.name,
         ...(settings.showTierDescriptions ? { description: describeTier(tier) } : {}),
-        inputModalities: ['text'],
-      }))
+        inputModalities: unionModalities(infos.map(info => info?.inputModalities)),
+      }
+    }))
   }
 
   /**
@@ -294,6 +310,7 @@ export class RouterAdapter extends Adapter {
   async resolveModel(provider, model) {
     const { settings } = this.#store.read()
     const tier = settings.tiers.find(candidate => candidate.id === model)
+    const allModalities = () => unionModalities(usable.map(info => info.inputModalities))
     const base = { provider, id: model, name: tier?.name ?? model, inputModalities: ['text'] }
     if (tier === undefined) {
       // Unknown ids still resolve, so a stored selection keeps rendering after
@@ -327,6 +344,7 @@ export class RouterAdapter extends Adapter {
       : intersectEfforts(usable, chain)
     return {
       ...base,
+      inputModalities: allModalities(),
       ...(settings.showTierDescriptions ? { description: describeTier(tier) } : {}),
       // The tier advertises the LARGEST window in its chain, not the smallest.
       // Advertising the smallest would cap every request at the weakest member
@@ -362,6 +380,7 @@ export class RouterAdapter extends Adapter {
           model: member.model,
           ok: true,
           ...(info.context?.contextWindow === undefined ? {} : { contextWindow: info.context.contextWindow }),
+          ...(info.inputModalities === undefined ? {} : { inputModalities: [...info.inputModalities] }),
           ...(info.defaultMaxTokens === undefined ? {} : { maxTokens: info.defaultMaxTokens }),
           ...(info.reasoning === undefined ? {} : {
             efforts: info.reasoning.efforts.map(effort => effort.id),
@@ -372,6 +391,35 @@ export class RouterAdapter extends Adapter {
         return { provider: member.provider, model: member.model, ok: false, error: describe(error) }
       }
     }))
+  }
+
+  /**
+   * Resolve one member's metadata, briefly cached.
+   *
+   * Both the catalog surface and the dispatch path need `inputModalities` and
+   * `context`, and neither can afford one metadata round-trip per member per
+   * keystroke. The TTL is short on purpose: a gateway that starts advertising
+   * vision should take effect within a turn or two, without a restart.
+   * @param {object} llm - the live LLM service.
+   * @param {{provider: string, model: string}} member - the member to resolve.
+   * @param {AbortSignal} [signal] - cancellation.
+   * @returns {Promise<object | undefined>} model info, or undefined when unresolvable.
+   */
+  async #infoOf(llm, member, signal) {
+    const key = `${member.provider}/${member.model}`
+    const hit = this.#info.get(key)
+    const now = Date.now()
+    if (hit !== undefined && now - hit.at < INFO_TTL_MS) return hit.info
+    let info
+    try {
+      info = await llm.resolveModelInfo?.(member.provider, member.model, signal)
+    } catch {
+      info = undefined
+    }
+    // An unresolvable member is cached too, so a dead route does not cost a
+    // lookup on every single request.
+    this.#info.set(key, { at: now, info })
+    return info
   }
 
   /** Registered provider route ids, read through the live registry. */
@@ -431,18 +479,15 @@ export class RouterAdapter extends Adapter {
    * @param {object} options - the request about to be dispatched.
    * @returns {Promise<{ordered: Array<object>, skipped: Array<object>, estimate: number, fits: boolean}>} routing decision.
    */
-  async #routeByContext(llm, chain, options, strategy) {
+  async #routeByContext(llm, chain, options, strategy, modalityRouting) {
     const estimate = estimateRequestTokens(options, this.#meter()).inputTokens
     // Even a single-member chain needs its efforts, for mapping.
     const resolved = new Map()
     await Promise.all(chain.map(async member => {
-      try {
-        const info = await llm.resolveModelInfo?.(member.provider, member.model, options.signal)
-        if (info !== undefined) resolved.set(`${member.provider}/${member.model}`, info)
-      } catch {
-        // An unresolvable member keeps no metadata: `orderByContext` then treats
-        // it as eligible and effort mapping forwards the request unchanged.
-      }
+      const info = await this.#infoOf(llm, member, options.signal)
+      // An unresolvable member keeps no metadata: `orderByContext` then treats
+      // it as eligible and effort mapping forwards the request unchanged.
+      if (info !== undefined) resolved.set(`${member.provider}/${member.model}`, info)
     }))
     const enriched = chain.map(member => {
       const info = resolved.get(`${member.provider}/${member.model}`)
@@ -452,10 +497,26 @@ export class RouterAdapter extends Adapter {
         ...member,
         ...(Number.isFinite(window) && window > 0 ? { contextWindow: window } : {}),
         ...(info.reasoning?.efforts === undefined ? {} : { efforts: info.reasoning.efforts }),
+        ...(info.inputModalities === undefined ? {} : { inputModalities: info.inputModalities }),
       }
     })
-    if (chain.length === 1) return { ordered: enriched, skipped: [], estimate, fits: true, strategy }
-    return orderByContext(enriched, estimate, undefined, { strategy, reserveOutput: options.maxTokens })
+    // A request carrying an image must not land on a member DSH would flatten it
+    // for: that is silent data loss, and it looks like the model "got dumber".
+    const vision = requestHasImage(options) && modalityRouting !== false
+    const split = modalityRouting === false ? { usable: enriched, skipped: [] } : splitByModality(enriched, vision)
+    if (split.usable.length === 0) {
+      // No member can see. Proceed with the whole chain anyway: DSH projects the
+      // image to text, so the turn still answers, and the log names the
+      // limitation rather than pretending the image was understood.
+      const ordered = chain.length === 1 ? enriched : orderByContext(enriched, estimate, undefined, { strategy, reserveOutput: options.maxTokens }).ordered
+      return { ordered, skipped: [], blindSkipped: split.skipped, vision, estimate, fits: true, strategy, noVisionMember: true }
+    }
+    const skipped = split.skipped.map(member => ({ ...member, reason: 'NO_VISION' }))
+    if (split.usable.length === 1) {
+      return { ordered: split.usable, skipped, blindSkipped: [], vision, estimate, fits: true, strategy }
+    }
+    const decision = orderByContext(split.usable, estimate, undefined, { strategy, reserveOutput: options.maxTokens })
+    return { ...decision, skipped: [...skipped, ...decision.skipped], blindSkipped: [], vision }
   }
 
   /**
@@ -503,7 +564,7 @@ export class RouterAdapter extends Adapter {
     // any of them. A tier spans models with different windows, so the whole
     // point of advertising the largest one is that the dispatcher then routes by
     // size instead of letting a smaller member reject the prompt.
-    const routed = await this.#routeByContext(llm, chain, options, tier.contextStrategy)
+    const routed = await this.#routeByContext(llm, chain, options, tier.contextStrategy, settings.modalityRouting)
 
     const tried = []
     let budget = MAX_ATTEMPTS_PER_TURN
@@ -513,14 +574,29 @@ export class RouterAdapter extends Adapter {
     const turn = this.#log.begin({ tier: tier.id, tierName: tier.name })
     for (const skipped of routed.skipped) {
       // Recorded as its own attempt kind so the log explains the jump instead of
-      // looking like the member was never configured.
+      // looking like the member was never configured. Two reasons are reported:
+      // too small for the context, or unable to see the attached image.
+      const blind = skipped.reason === 'NO_VISION'
       turn.attempt({
         provider: skipped.provider,
         model: skipped.model,
         attempt: 0,
         outcome: 'skipped',
-        code: 'CONTEXT_TOO_SMALL',
-        message: `需要 ${routed.estimate} tokens，可用 ${skipped.usable} / ${skipped.window}`,
+        ...(blind ? { code: 'NO_VISION', message: '该成员不支持图像输入' } : {
+          code: 'CONTEXT_TOO_SMALL',
+          message: `需要 ${routed.estimate} tokens，可用 ${skipped.usable} / ${skipped.window}`,
+        }),
+      })
+    }
+    if (routed.noVisionMember === true) {
+      this.#logger.warn?.(`model-router: tier "${tier.id}" has no image-capable member; the image will be flattened to text`)
+      turn.attempt({
+        provider: '—',
+        model: '—',
+        attempt: 0,
+        outcome: 'skipped',
+        code: 'NO_VISION_MEMBER',
+        message: `挡位里没有支持图像的成员，图片会被降级成文字。可用成员：${routed.blindSkipped?.length ?? 0} 个都不行`,
       })
     }
     for (const member of routed.ordered) {

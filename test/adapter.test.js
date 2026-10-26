@@ -56,6 +56,7 @@ function makeLlm(script) {
       return {
         provider, id: model, name: known.name ?? model,
         ...(known.contextWindow === undefined ? {} : { context: { contextWindow: known.contextWindow } }),
+        ...(known.inputModalities === undefined ? {} : { inputModalities: known.inputModalities }),
         ...(known.efforts === undefined ? {} : {
           reasoning: { efforts: known.efforts.map(id => ({ id, name: id })), defaultEffort: known.efforts[0] },
         }),
@@ -755,4 +756,96 @@ test('a default tier still answers with the first member', async () => {
   )
   await collect(adapter, 'auto')
   assert.equal(log.read().entries[0].provider, 'small', 'chain order is still the default')
+})
+
+const IMAGE_MESSAGE = [{ role: 'user', content: [{ type: 'image', source: { kind: 'attachment', id: 'a1' } }, { type: 'text', text: '看这张图' }] }]
+const TEXT_MESSAGE = [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }]
+
+test('an image request skips members that cannot see it', async () => {
+  const { adapter, log } = wire(
+    tierSettings([{ provider: 'blind', model: 'one' }, { provider: 'eyes', model: 'two' }]),
+    {
+      models: {
+        blind: { models: [{ id: 'one', inputModalities: ['text'] }] },
+        eyes: { models: [{ id: 'two', inputModalities: ['text', 'image'] }] },
+      },
+      routes: { 'blind/one': [answer('blind')], 'eyes/two': [answer('eyes')] },
+    },
+  )
+  const chunks = await collect(adapter, 'auto', { messages: IMAGE_MESSAGE })
+  assert.equal(finishOf(chunks).reason.kind, 'stop')
+  const [entry] = log.read().entries
+  assert.equal(entry.provider, 'eyes', 'the vision member answered')
+  const skip = entry.attempts.find(attempt => attempt.code === 'NO_VISION')
+  assert.equal(skip.provider, 'blind', 'the blind member is reported, not silently dropped')
+})
+
+test('a text request still uses the first member in order', async () => {
+  const { adapter, log } = wire(
+    tierSettings([{ provider: 'blind', model: 'one' }, { provider: 'eyes', model: 'two' }]),
+    {
+      models: {
+        blind: { models: [{ id: 'one', inputModalities: ['text'] }] },
+        eyes: { models: [{ id: 'two', inputModalities: ['text', 'image'] }] },
+      },
+      routes: { 'blind/one': [answer('blind')], 'eyes/two': [answer('eyes')] },
+    },
+  )
+  await collect(adapter, 'auto', { messages: TEXT_MESSAGE })
+  assert.equal(log.read().entries[0].provider, 'blind', 'no image means no vision preference')
+})
+
+test('modality routing can be turned off', async () => {
+  const store = makeStore({ ...tierSettings([{ provider: 'blind', model: 'one' }, { provider: 'eyes', model: 'two' }]), modalityRouting: false })
+  const adapter = new RouterAdapter({ store, logger: {} })
+  adapter.ctx = { llm: makeLlm({
+    models: {
+      blind: { models: [{ id: 'one', inputModalities: ['text'] }] },
+      eyes: { models: [{ id: 'two', inputModalities: ['text', 'image'] }] },
+    },
+    routes: { 'blind/one': [answer('blind')], 'eyes/two': [answer('eyes')] },
+  }) }
+  await collect(adapter, 'auto', { messages: IMAGE_MESSAGE })
+  assert.equal(adapter.requestLog.read().entries[0].provider, 'blind', 'the switch keeps chain order')
+})
+
+test('a tier with no vision member still answers and says why', async () => {
+  const { adapter, log } = wire(
+    tierSettings([{ provider: 'blind', model: 'one' }]),
+    {
+      models: { blind: { models: [{ id: 'one', inputModalities: ['text'] }] } },
+      routes: { 'blind/one': [answer('flattened')] },
+    },
+  )
+  const chunks = await collect(adapter, 'auto', { messages: IMAGE_MESSAGE })
+  assert.equal(finishOf(chunks).reason.kind, 'stop', 'the turn is not failed outright')
+  const entry = log.read().entries[0]
+  assert.equal(entry.provider, 'blind')
+  assert.ok(entry.attempts.some(attempt => attempt.code === 'NO_VISION_MEMBER'), 'the limitation is recorded')
+})
+
+test('a tier advertises image when any member can see', async () => {
+  const { adapter } = wire(
+    tierSettings([{ provider: 'blind', model: 'one' }, { provider: 'eyes', model: 'two' }]),
+    {
+      models: {
+        blind: { models: [{ id: 'one', inputModalities: ['text'] }] },
+        eyes: { models: [{ id: 'two', inputModalities: ['text', 'image'] }] },
+      },
+      routes: {},
+    },
+  )
+  const listed = await adapter.listModels('model-router')
+  assert.deepEqual(listed[0].inputModalities, ['text', 'image'], 'the catalog must not understate the chain')
+  const info = await adapter.resolveModel('model-router', 'auto')
+  assert.deepEqual(info.inputModalities, ['text', 'image'])
+})
+
+test('a text-only tier does not claim vision', async () => {
+  const { adapter } = wire(
+    tierSettings([{ provider: 'blind', model: 'one' }]),
+    { models: { blind: { models: [{ id: 'one' }] } }, routes: {} },
+  )
+  assert.deepEqual((await adapter.listModels('model-router'))[0].inputModalities, ['text'], 'a model that discloses nothing stays text')
+  assert.deepEqual((await adapter.resolveModel('model-router', 'auto')).inputModalities, ['text'])
 })

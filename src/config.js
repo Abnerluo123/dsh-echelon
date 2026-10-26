@@ -314,6 +314,10 @@ export function normalizeSettings(raw) {
     // models with different vocabularies can only offer levels they share —
     // often none at all.
     effortMapping: source.effortMapping !== false,
+    // Image routing: when a request carries an image, prefer a member that can
+    // actually see it. Off means "keep chain order even if the image gets
+    // flattened to text", which is only sensible for debugging.
+    modalityRouting: source.modalityRouting !== false,
   }
 }
 
@@ -523,4 +527,47 @@ export function isRetryable(code) {
   if (typeof code !== 'string') return true
   if (TERMINAL_CODES.includes(code)) return false
   return RETRYABLE_CODES.includes(code)
+}
+
+/**
+ * Split a chain by whether its members can see images.
+ *
+ * Only applied when the request actually contains one: a text-only request must
+ * not start preferring vision models, because that would reorder the chain for
+ * every ordinary turn.
+ *
+ * Members that disclose no modalities are treated as text-only, matching how DSH
+ * reads a missing `inputModalities`. That is deliberately the conservative
+ * choice: promising vision to a model that never claimed it would hand an image
+ * to an endpoint that cannot accept one.
+ * @param {Array<object>} chain - dispatch chain, entries carrying `inputModalities`.
+ * @param {boolean} needsImage - whether the request contains an image.
+ * @returns {{usable: Array<object>, skipped: Array<{provider: string, model: string}>}} members that can see, and those that cannot.
+ */
+export function splitByModality(chain, needsImage) {
+  if (needsImage !== true) return { usable: chain, skipped: [] }
+  const usable = []
+  const skipped = []
+  for (const member of chain) {
+    const modalities = Array.isArray(member.inputModalities) ? member.inputModalities : ['text']
+    if (modalities.includes('image')) usable.push(member)
+    else skipped.push({ provider: member.provider, model: member.model })
+  }
+  return { usable, skipped }
+}
+
+/**
+ * The input modalities a tier should advertise.
+ *
+ * The union, not the intersection: advertising only what every member shares
+ * would mark a tier text-only as soon as one text model joins, and DSH would
+ * then flatten every image before the router ever saw it. Advertising the union
+ * matches the window rule — claim the most the chain can do, then route each
+ * request to a member that can do it.
+ * @param {Array<unknown>} lists - one modality list per member.
+ * @returns {string[]} `['text']`, or `['text', 'image']` when any member sees images.
+ */
+export function unionModalities(lists) {
+  const canSee = lists.some(list => Array.isArray(list) && list.includes('image'))
+  return canSee ? ['text', 'image'] : ['text']
 }

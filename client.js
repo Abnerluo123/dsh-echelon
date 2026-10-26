@@ -91,6 +91,7 @@ window.__ModuleLoader__.load({
         'member.up': '上移',
         'member.down': '下移',
         'member.missing': '该模型已不在目录中',
+        'member.vision': '支持图像',
         'member.probe': '检测',
         'member.probeOk': '可用',
         'member.probeFail': '不可用',
@@ -122,6 +123,8 @@ window.__ModuleLoader__.load({
         'options.file': '配置文件',
         'options.copy': '复制路径',
         'options.copied': '已复制',
+        'options.modalityRouting': '有图片时自动选能看图的成员',
+        'options.modalityRoutingHint': '请求带图片时，跳过不支持视觉的成员，避免图片被静默转成文字。',
         'options.effortMapping': '思考强度自动映射',
         'options.effortMappingHint': '把 xhigh / high / middle / low / off 翻译成每个模型自己的挡位名字。关掉则原样转发。',
         'options.logging': '记录调用日志',
@@ -220,6 +223,7 @@ window.__ModuleLoader__.load({
         'member.up': 'Move up',
         'member.down': 'Move down',
         'member.missing': 'no longer in the catalog',
+        'member.vision': 'Sees images',
         'member.probe': 'Test',
         'member.probeOk': 'available',
         'member.probeFail': 'unavailable',
@@ -251,6 +255,8 @@ window.__ModuleLoader__.load({
         'options.file': 'Settings file',
         'options.copy': 'Copy path',
         'options.copied': 'Copied',
+        'options.modalityRouting': 'Route images to a model that can see',
+        'options.modalityRoutingHint': 'When a request carries an image, skip members that cannot see it instead of letting DSH flatten it to text.',
         'options.effortMapping': 'Map reasoning levels automatically',
         'options.effortMappingHint': 'Translate xhigh / high / middle / low / off into each model\'s own names. Off forwards the value as written.',
         'options.logging': 'Record a request log',
@@ -740,6 +746,9 @@ window.__ModuleLoader__.load({
             h('span', { className: 'mr-member-name' }, known?.name ?? member.model),
             h('code', { title: `${member.provider}/${member.model}` }, `${member.provider}/${member.model}`),
             known === undefined ? h('small', null, t('member.missing')) : null,
+            (verdict?.inputModalities ?? known?.inputModalities ?? []).includes('image')
+              ? h('span', { className: 'mr-pill', title: t('member.vision') }, '● ' + t('member.vision'))
+              : null,
             verdict === undefined
               ? null
               : h('small', { style: { color: verdict.ok ? 'var(--dsw-alias-state-success-primary, #3a3)' : 'var(--dsw-alias-state-error-primary)' } },
@@ -1298,6 +1307,13 @@ window.__ModuleLoader__.load({
               onChange: event => setDraft(current => ({ ...current, showTierDescriptions: event.target.checked })),
             }),
             h('span', { style: { fontSize: '13px' } }, t('options.descriptions'))),
+          h('label', { className: 'mr-row', title: t('options.modalityRoutingHint') },
+            h('input', {
+              type: 'checkbox', checked: settings.modalityRouting !== false,
+              onChange: event => setDraft(current => ({ ...current, modalityRouting: event.target.checked })),
+            }),
+            h('span', { style: { fontSize: '13px' } }, t('options.modalityRouting')),
+            h('small', null, t('options.modalityRoutingHint'))),
           h('label', { className: 'mr-row', title: t('options.effortMappingHint') },
             h('input', {
               type: 'checkbox', checked: settings.effortMapping !== false,

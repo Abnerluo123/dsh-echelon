@@ -110,6 +110,16 @@ Worth knowing:
 - **Nothing is hidden while no tier can dispatch.** If every tier lacks a usable member (a fresh install, for instance), hiding is lifted automatically — otherwise the picker would be empty and you could not reach the settings page to fix it.
 - Hiding takes effect on save; the menu refreshes within seconds.
 
+## Image input
+
+A tier declares `['text', 'image']` as soon as **any** member can see images — the same rule as the window: claim what the chain can do, then route each request to a member that can do it.
+
+When a request actually carries an image, the router skips members that cannot see it and hands the turn to one that can. Text-only requests are unaffected and keep the chain order.
+
+**Settings → Advanced → Route images to a model that can see** controls this (on by default). Turning it off keeps chain order — the image is then flattened to text by DSH, which is only useful for debugging.
+
+If no member in the tier can see, the turn still goes out (with the image converted to text), but the request log records `NO_VISION_MEMBER` so it is clear the tier could not read the image, rather than looking like the model simply misunderstood it.
+
 ## Selection strategy
 
 A tier chooses among the members that *fit* the request in one of two ways:

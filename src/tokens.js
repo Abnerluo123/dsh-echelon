@@ -139,3 +139,25 @@ export function fitsContext(member, inputTokens, reserveOutput) {
   const { usable } = inputBudgetFor(window, reserve)
   return { fits: inputTokens <= usable, usable, window }
 }
+
+/**
+ * Whether a request carries at least one image block.
+ *
+ * Checked against the same shape DSH uses when it decides to project images into
+ * text for a text-only model: any content block with `type: 'image'`. Finding one
+ * is what lets the router pick a member that can actually see it instead of
+ * letting the image be flattened to a placeholder.
+ * @param {object} options - the generate options about to be dispatched.
+ * @returns {boolean} true when the prompt contains an image.
+ */
+export function requestHasImage(options) {
+  const messages = Array.isArray(options?.messages) ? options.messages : []
+  for (const message of messages) {
+    const content = message?.content
+    if (!Array.isArray(content)) continue
+    for (const block of content) {
+      if (block !== null && typeof block === 'object' && block.type === 'image') return true
+    }
+  }
+  return false
+}
