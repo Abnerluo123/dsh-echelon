@@ -328,7 +328,7 @@ test('advertised tiers are ordered, enabled-only, and include the empty default'
   assert.deepEqual(models.map(model => model.name), ['快', '慢'])
 })
 
-test('a tier reports the largest member window and the model effort levels', async () => {
+test('with mapping on the tier reports the plugin ladder', async () => {
   const { adapter } = wire(
     tierSettings([{ provider: 'a', model: 'big' }, { provider: 'b', model: 'small' }]),
     {
@@ -344,11 +344,11 @@ test('a tier reports the largest member window and the model effort levels', asy
   // that fits it. Reporting the smallest would throw away the big model's
   // capacity for every request.
   assert.equal(info.context.contextWindow, 1_000_000)
-  // The head member declares low/medium/high; that is exactly what the picker
-  // shows, with the member's own default preserved. Advertising this plugin's
-  // ladder instead put Off/Low/Middle/High/Xhigh in front of a model that does
-  // not speak those names.
-  assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['low', 'medium', 'high'])
+  // Mapping is on by default: the picker shows one stable vocabulary and every
+  // selection is translated per member at dispatch. Showing the model's names
+  // here instead would make the switch look like it did nothing.
+  assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['off', 'low', 'middle', 'high', 'xhigh'])
+  // The model's own default ("low") is carried over in ladder terms.
   assert.equal(info.reasoning.defaultEffort, 'low')
 })
 
@@ -434,7 +434,7 @@ test('a tier override applies to every member that does not set its own', async 
   // reported 200K, which is the point of the override), and `b` keeps its own
   // 32K. The tier advertises the largest of those effective windows.
   assert.equal(info.context.contextWindow, 100_000)
-  assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['low', 'high'], 'the model declares only these')
+  assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['off', 'low', 'middle', 'high', 'xhigh'], 'mapping on always offers the ladder')
 })
 
 test('a request too large for the head member routes to the one that fits', async () => {
@@ -1124,26 +1124,41 @@ test('a new conversation defaults to the model level unless overridden', async (
     { models: { p: { models: [{ id: 'm', efforts: ['off', 'low', 'high', 'max'] }] } }, routes: {} },
   )
   const model = await build({}).adapter.resolveModel('model-router', 'auto')
-  assert.equal(model.reasoning.defaultEffort, 'off', 'the fixture model declares off as its own default')
+  assert.equal(model.reasoning.defaultEffort, 'off', "the model's own default carries over as a ladder id")
 
-  // This tier has no "middle", so the choice snaps to the nearest level; a tie
-  // goes to the stronger one, exactly as dispatch would translate it.
   const wantedM = await build({ defaultEffort: 'middle' }).adapter.resolveModel('model-router', 'auto')
-  assert.equal(wantedM.reasoning.defaultEffort, 'high', 'an unavailable level snaps rather than being advertised')
+  assert.equal(wantedM.reasoning.defaultEffort, 'middle', 'with the ladder shown, a ladder level is advertised as-is')
 
   const wantedLow = await build({ defaultEffort: 'low' }).adapter.resolveModel('model-router', 'auto')
   assert.equal(wantedLow.reasoning.defaultEffort, 'low')
 })
 
-test('a configured default is snapped onto the levels the tier offers', async () => {
-  // xhigh is not in off/low/high/max; advertising it would put a level in the
-  // picker that the model never listed.
+test('the default is always one of the advertised levels', async () => {
+  for (const [mapping, extra] of [[true, { defaultEffort: 'xhigh' }], [false, {}], [false, { defaultEffort: 'low' }]]) {
+    const { adapter } = wire(
+      {
+        ...tierSettings([{ provider: 'p', model: 'm' }]),
+        ...(mapping ? {} : { effortMapping: false }),
+        ...extra,
+      },
+      { models: { p: { models: [{ id: 'm', efforts: ['off', 'low', 'high', 'max'] }] } }, routes: {} },
+    )
+    const info = await adapter.resolveModel('model-router', 'auto')
+    const offered = info.reasoning.efforts.map(effort => effort.id)
+    assert.ok(
+      offered.includes(info.reasoning.defaultEffort),
+      `mapping=${mapping}: default ${info.reasoning.defaultEffort} must be one of ${offered.join('/')}`,
+    )
+  }
+})
+
+test('with mapping off the tier reports the model own levels', async () => {
+  // No translation happens, so the menu must list exactly what the model accepts.
   const { adapter } = wire(
-    { ...tierSettings([{ provider: 'p', model: 'm' }]), defaultEffort: 'xhigh' },
+    { ...tierSettings([{ provider: 'p', model: 'm' }]), effortMapping: false },
     { models: { p: { models: [{ id: 'm', efforts: ['off', 'low', 'high', 'max'] }] } }, routes: {} },
   )
   const info = await adapter.resolveModel('model-router', 'auto')
-  const offered = info.reasoning.efforts.map(effort => effort.id)
-  assert.ok(offered.includes(info.reasoning.defaultEffort), `default ${info.reasoning.defaultEffort} must be one of ${offered.join('/')}`)
-  assert.equal(info.reasoning.defaultEffort, 'max')
+  assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['off', 'low', 'high', 'max'])
+  assert.equal(info.reasoning.defaultEffort, 'off', "the model's own default is used verbatim")
 })

@@ -46,7 +46,14 @@ Every model names its reasoning levels differently — `minimal/low/medium/high`
 tier that could only offer the levels its members *share* often had nothing to
 offer, which is why the effort menu used to contain just "follow session".
 
-The picker shows **the model's own levels** (Off/Low/High/Max when that is what it declares). Only differing vocabularies between members need translation, and the plugin owns one internal vocabulary for that:
+The switch decides which vocabulary the picker shows:
+
+| Map reasoning levels automatically | Picker shows | Dispatch |
+|---|---|---|
+| **On (default)** | the plugin's `off / low / middle / high / xhigh` | translated per member into the model's own level |
+| Off | the levels the model itself declares | forwarded as written |
+
+With mapping on, one stable vocabulary is the point: pick a name, every member understands it. With mapping off nothing is translated, so the menu can only list levels the model actually accepts. The internal vocabulary is:
 
 ```
 off  <  low  <  middle  <  high  <  xhigh

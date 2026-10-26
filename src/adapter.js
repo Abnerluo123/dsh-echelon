@@ -36,7 +36,7 @@ import {
   retryDelay,
   tierChain,
 } from './config.js'
-import { mapEffort } from './effort.js'
+import { EFFORT_IDS, mapEffort } from './effort.js'
 import { RequestLog, usageOf } from './log.js'
 import { SettingsStore } from './store.js'
 import { estimateRequestTokens, requestHasImage } from './tokens.js'
@@ -414,38 +414,31 @@ export class RouterAdapter extends Adapter {
       .filter(window => Number.isInteger(window) && window > 0)
     const defaults = chain.map((member, index) => member.maxTokens ?? usable[index]?.defaultMaxTokens)
       .filter(tokens => Number.isSafeInteger(tokens) && tokens > 0)
-    // The tier advertises the levels the underlying model actually offers.
+    // What the picker shows depends on the mapping switch, because the two
+    // modes mean different things:
     //
-    // Advertising this plugin's own ladder instead looked tidy in theory and
-    // wrong in the picker: the effort menu offered five rungs no model uses
-    // (Off/Low/Middle/High/Xhigh) instead of the model's real set (Off/Low/
-    // High/Max), and defaulted to "middle", which no provider names.
-    //
-    // Mapping still happens per member at dispatch, so picking one of the model's
-    // levels lands correctly on every member even when their vocabularies differ.
-    // When the first member declares nothing, the next one that does is used, so
-    // a silent head does not hide the levels of a capable fallback.
+    // - mapping ON: the user picks from this plugin's fixed ladder and every
+    //   selection is translated per member at dispatch. Showing the model's own
+    //   names here would defeat the point — the vocabulary would change per tier
+    //   and the switch would look like it did nothing.
+    // - mapping OFF: no translation happens, so the menu must list exactly what
+    //   the underlying model accepts, or a choice would be forwarded verbatim to
+    //   an endpoint that cannot honour it.
+    const mapping = settings.effortMapping !== false
     const declared = infos.map(info => info?.reasoning).find(reasoning => Array.isArray(reasoning?.efforts) && reasoning.efforts.length > 0)
-    const efforts = settings.effortMapping === false
-      ? intersectEfforts(usable, chain)
-      : declared === undefined
-        ? undefined
-        : {
-          efforts: declared.efforts.map(effort => ({ ...effort })),
-          ...(() => {
-            const list = declared.efforts.map(effort => effort.id)
-            // A configured default is translated onto this tier's own list, so the
-            // picker can never show a level it does not offer - which is how a
-            // stale "middle" ended up displayed on a tier that only speaks
-            // off/low/high/max. Unset means "the model's own default".
-            const wanted = settings.defaultEffort
-            const chosen = wanted === undefined ? undefined : mapEffort(wanted, list).effort
-            const fallback = declared.defaultEffort !== undefined && list.includes(declared.defaultEffort)
-              ? declared.defaultEffort
-              : list[0]
-            return { defaultEffort: chosen !== undefined && list.includes(chosen) ? chosen : fallback }
-          })(),
-        }
+    const efforts = mapping
+      ? {
+        efforts: EFFORT_IDS.map(id => ({ id, name: id })),
+        // Start from the level the model itself prefers, expressed in ladder
+        // terms, unless the user pinned one. "high" is the fallback: it is the
+        // common naming and a middle-of-the-road choice when nothing is known.
+        defaultEffort: (() => {
+          const wanted = settings.defaultEffort ?? declared?.defaultEffort
+          const onLadder = wanted === undefined ? undefined : mapEffort(wanted, EFFORT_IDS).effort
+          return onLadder !== undefined && EFFORT_IDS.includes(onLadder) ? onLadder : 'high'
+        })(),
+      }
+      : intersectEfforts(usable, chain)
     return {
       ...base,
       inputModalities: allModalities(),
