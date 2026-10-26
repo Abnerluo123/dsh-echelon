@@ -238,3 +238,48 @@ test('both dictionaries cover the same keys', async () => {
   assert.deepEqual(missingZh, [], 'keys present in en but missing from zh')
 })
 
+test('every CSS custom property exists in the host theme', () => {
+  // Regression: the page once used `--dsw-alias-bg-page-primary`, which DSH
+  // does not define. An unknown custom property invalidates the whole
+  // declaration, so the surface silently turned transparent and showed a grey
+  // block through it — with nothing in the console to explain why.
+  //
+  // The list below is every theme variable the DSH shell ships. A new name here
+  // must be verified against the running shell before it is added.
+  const hostVariables = new Set([
+    'alias-bg-base', 'alias-bg-layer-1', 'alias-bg-layer-2', 'alias-bg-layer-3', 'alias-bg-layer-4',
+    'alias-bg-mask-1', 'alias-bg-module-platform', 'alias-border-l1', 'alias-border-l2', 'alias-border-l3',
+    'alias-border-l4', 'alias-brand-primary', 'alias-button-primary-fill', 'alias-button-primary-hover',
+    'alias-code-diff-added', 'alias-code-diff-deleted', 'alias-interactive-bg-active',
+    'alias-interactive-bg-hover', 'alias-interactive-bg-hover-danger', 'alias-label-caption',
+    'alias-label-dimmed', 'alias-label-error', 'alias-label-primary', 'alias-label-primary-foreground',
+    'alias-label-secondary', 'alias-label-tertiary', 'alias-state-business-primary', 'alias-state-error-primary',
+    'alias-state-success-primary', 'alias-state-success-tertiary', 'alias-state-warn-label',
+    'alias-state-warn-primary', 'alias-markdown-code-block', 'alias-scrollbar-bg-l2',
+    'alias-toast-bg', 'alias-toast-label', 'elevation-prominent', 'elevation-stroke-color',
+    'font-markdown-code-font-family', 'hovercard-bg',
+  ])
+  const { CSS } = loadBundle().__test
+  const used = [...new Set([...CSS.matchAll(/var\(--dsw-([a-z0-9-]+)/g)].map(match => match[1]))]
+  const unknown = used.filter(name => !hostVariables.has(name))
+  assert.deepEqual(unknown, [], `these theme variables do not exist in DSH: ${unknown.join(', ')}`)
+})
+
+test('surfaces use the host elevation ramp, not a hardcoded colour', () => {
+  const { CSS } = loadBundle().__test
+  // A literal colour here would survive one scheme and be wrong in the other.
+  const surfaces = [...CSS.matchAll(/\.mr-(?:card|tier|member|log-row|preview|radio|modal-card|disclosure)\{[^}]*background:([^;}]+)/g)]
+  assert.ok(surfaces.length >= 6, 'expected the main surfaces to declare a background')
+  for (const [, value] of surfaces) {
+    assert.match(value, /var\(--dsw-/, `a surface uses a literal background: ${value}`)
+  }
+})
+
+test('detail blocks are collapsed unless opened', () => {
+  const { CSS } = loadBundle().__test
+  // `<details>` is closed by default in the browser; nothing in the stylesheet
+  // may force it open, or "默认折叠" would depend on a style accident.
+  assert.doesNotMatch(CSS, /\.mr-disclosure\s*\{[^}]*display:\s*block/, 'a disclosure must not override the details default')
+  assert.match(CSS, /\.mr-disclosure\[open\]/, 'the open state needs its own rule to rotate the chevron')
+})
+

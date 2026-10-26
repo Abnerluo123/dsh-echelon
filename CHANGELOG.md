@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.1.1
+
+### Settings page
+
+- **Fixed a grey block on the settings page.** The stylesheet referenced
+  `--dsw-alias-bg-page-primary`, which DSH does not define; an unknown custom
+  property invalidates the whole declaration, so the surface fell back to
+  transparent and the page showed through it. Surfaces now use the host's own
+  elevation ramp (`bg-layer-1..3`), which also fixes nesting depth in both
+  schemes.
+- **Fixed the code font.** `--dsw-font-mono` does not exist either; the correct
+  name is `--dsw-font-markdown-code-font-family`, so provider/model ids now
+  render monospaced as intended.
+- **Dark mode.** Every colour resolves through a theme variable, and the
+  surface hierarchy is now light-on-light and dark-on-dark instead of relying on
+  one platform background. Verified by measuring computed styles under both
+  palettes in a real browser, not by eye.
+- **Detail blocks collapse by default.** Per-member settings (retries, timeout,
+  reasoning effort, context window, output cap) and the tier-level defaults are
+  now behind a disclosure, using native `<details>` so the state costs no
+  JavaScript and stays keyboard-accessible. The collapsed summary still shows
+  the current values, so "what is this member set to" needs no click.
+
+### Tests
+
+- A guard asserts every CSS custom property the page uses exists in the host
+  theme, so the transparent-surface bug cannot come back silently.
+- A guard asserts surfaces never use a literal colour, which would survive one
+  scheme and be wrong in the other.
+
 ## 1.1.0
 
 ### Context-size routing

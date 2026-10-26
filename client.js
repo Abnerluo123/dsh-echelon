@@ -60,6 +60,7 @@ window.__ModuleLoader__.load({
         'tiers.remove': '删除',
         'tiers.removeConfirm': '删除挡位「{name}」？成员配置会一并删除。',
         'tiers.empty': '还没有挡位。新增一个，然后往里加模型。',
+        'tiers.defaults': '挡位默认值',
         'tiers.members': '成员（按顺序）',
         'tiers.membersEmpty': '还没有模型。选一个加进来。',
         'tiers.addMember': '添加模型',
@@ -180,6 +181,7 @@ window.__ModuleLoader__.load({
         'tiers.remove': 'Delete',
         'tiers.removeConfirm': 'Delete tier “{name}”? Its members go with it.',
         'tiers.empty': 'No tiers yet. Add one, then add models to it.',
+        'tiers.defaults': 'Tier defaults',
         'tiers.members': 'Members (in order)',
         'tiers.membersEmpty': 'No models yet. Pick one to add.',
         'tiers.addMember': 'Add model',
@@ -291,8 +293,17 @@ window.__ModuleLoader__.load({
     }
 
     // ── styles ──────────────────────────────────────────────────────────────
-    // Every colour comes from a theme variable so the page survives a scheme
-    // switch, and nothing here overrides a host primitive.
+    // Every colour is a DSH theme variable, so light and dark follow the host
+    // together. Two rules learned the hard way:
+    //
+    //   1. Only use variable names DSH actually defines. An undefined custom
+    //      property invalidates the whole declaration, so `background:
+    //      var(--typo)` silently becomes transparent and the surface shows the
+    //      parent through it — a grey block with no rule that looks wrong.
+    //      `--dsw-alias-bg-page-primary` was exactly that mistake.
+    //   2. Layer surfaces with `bg-layer-1..4` (the host's own elevation ramp)
+    //      rather than inventing a page colour, so nesting reads correctly in
+    //      both schemes.
     const CSS = `
 .mr-root{max-width:760px;display:flex;flex-direction:column;gap:20px;color:var(--dsw-alias-label-primary)}
 .mr-root h2{margin:0;font-size:22px;line-height:30px;font-weight:600}
@@ -300,30 +311,32 @@ window.__ModuleLoader__.load({
 .mr-root p{margin:0;font-size:13px;line-height:21px;color:var(--dsw-alias-label-secondary)}
 .mr-root small{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
 .mr-head{display:flex;flex-direction:column;gap:8px}
-.mr-card{background:var(--dsw-alias-bg-module-platform);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:14px}
+.mr-card{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:14px}
 .mr-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .mr-spread{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .mr-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.mr-root button{font:inherit;font-size:13px;cursor:pointer;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-page-primary);color:var(--dsw-alias-label-primary);padding:5px 12px;line-height:20px}
+.mr-root button{font:inherit;font-size:13px;cursor:pointer;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);padding:5px 12px;line-height:20px}
 .mr-root button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .mr-root button:disabled{opacity:.45;cursor:default}
-.mr-root button.mr-primary{background:var(--dsw-alias-state-business-primary);border-color:transparent;color:var(--dsw-alias-label-primary-foreground,#fff)}
+.mr-root button.mr-primary{background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary));border-color:transparent;color:var(--dsw-alias-label-primary-foreground,#fff)}
+.mr-root button.mr-primary:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover,var(--dsw-alias-brand-primary))}
 .mr-root button.mr-danger{color:var(--dsw-alias-state-error-primary)}
 .mr-root button.mr-icon{padding:4px 8px;min-width:28px}
 .mr-root :is(button,input,select,textarea):focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
-.mr-root input[type=text],.mr-root input[type=number],.mr-root input[type=search],.mr-root select{box-sizing:border-box;font:inherit;font-size:13px;color:inherit;background:var(--dsw-alias-bg-page-primary);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:6px 9px;min-height:32px;min-width:0}
-.mr-tier{display:flex;flex-direction:column;gap:12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:14px;background:var(--dsw-alias-bg-page-primary)}
+.mr-root input[type=text],.mr-root input[type=number],.mr-root input[type=search],.mr-root select{box-sizing:border-box;font:inherit;font-size:13px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:6px 9px;min-height:32px;min-width:0}
+.mr-root input::placeholder{color:var(--dsw-alias-label-tertiary)}
+.mr-tier{display:flex;flex-direction:column;gap:12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:14px;background:var(--dsw-alias-bg-layer-2)}
 .mr-tier.is-disabled{opacity:.6}
 .mr-tier-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}
 .mr-tier-name{display:flex;align-items:center;gap:8px;min-width:0}
 .mr-tier-name input{flex:1;min-width:80px;font-size:14px;font-weight:500}
 .mr-pill{font-size:11px;line-height:16px;padding:1px 7px;border-radius:999px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);white-space:nowrap}
 .mr-members{display:flex;flex-direction:column;gap:8px}
-.mr-member{display:flex;flex-direction:column;gap:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:10px;background:var(--dsw-alias-bg-module-platform)}
+.mr-member{display:flex;flex-direction:column;gap:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:10px;background:var(--dsw-alias-bg-layer-1)}
 .mr-member.is-off{opacity:.55}
 .mr-member-main{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
 .mr-member-id{display:flex;flex-direction:column;gap:2px;min-width:0}
-.mr-member-id code{font-family:var(--dsw-font-mono,ui-monospace,monospace);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mr-member-id code{font-family:var(--dsw-font-markdown-code-font-family,ui-monospace,monospace);font-size:12px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mr-member-name{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mr-member-knobs{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
 .mr-field{display:flex;flex-direction:column;gap:3px;min-width:0}
@@ -332,7 +345,7 @@ window.__ModuleLoader__.load({
 .mr-field .mr-input-row input{width:100%}
 .mr-field .mr-unit{font-size:12px;color:var(--dsw-alias-label-tertiary);flex:none}
 .mr-empty{border:1px dashed var(--dsw-alias-border-l2);border-radius:8px;padding:14px;text-align:center}
-.mr-radio{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;cursor:pointer;background:var(--dsw-alias-bg-page-primary)}
+.mr-radio{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;cursor:pointer;background:var(--dsw-alias-bg-layer-2)}
 .mr-radio.is-active{border-color:var(--dsw-alias-state-business-primary)}
 .mr-radio input{margin-top:3px;flex:none}
 .mr-radio-text{display:flex;flex-direction:column;gap:2px}
@@ -341,8 +354,8 @@ window.__ModuleLoader__.load({
 .mr-hide-group > label{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:500}
 .mr-hide-model{display:flex;align-items:center;gap:7px;font-size:12px;padding-left:20px;color:var(--dsw-alias-label-secondary);overflow:hidden}
 .mr-hide-model span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mr-modal{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.42);padding:24px}
-.mr-modal-card{width:min(620px,100%);max-height:min(680px,calc(100vh - 48px));display:flex;flex-direction:column;gap:12px;background:var(--dsw-alias-bg-module-platform);border:1px solid var(--dsw-alias-border-l2);border-radius:14px;padding:18px;box-shadow:var(--dsw-elevation-prominent)}
+.mr-modal{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;background:var(--dsw-alias-bg-mask-1,rgba(0,0,0,.42));padding:24px}
+.mr-modal-card{width:min(620px,100%);max-height:min(680px,calc(100vh - 48px));display:flex;flex-direction:column;gap:12px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:14px;padding:18px;box-shadow:var(--dsw-elevation-prominent)}
 .mr-modal-list{overflow:auto;display:flex;flex-direction:column;gap:10px;min-height:0}
 .mr-group{display:flex;flex-direction:column;gap:3px}
 .mr-group-title{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--dsw-alias-label-tertiary);padding:6px 2px 2px}
@@ -352,10 +365,10 @@ window.__ModuleLoader__.load({
 .mr-option.is-disabled{opacity:.5;cursor:default}
 .mr-option-text{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
 .mr-option-name{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mr-option-id{font-family:var(--dsw-font-mono,ui-monospace,monospace);font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mr-option-id{font-family:var(--dsw-font-markdown-code-font-family,ui-monospace,monospace);font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mr-alert{border-radius:8px;padding:9px 11px;font-size:12px;line-height:18px;background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary);overflow-wrap:anywhere}
-.mr-note{border-radius:8px;padding:9px 11px;font-size:12px;line-height:18px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary)}
-.mr-preview{display:flex;flex-direction:column;gap:4px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:10px 12px;background:var(--dsw-alias-bg-page-primary);max-height:260px;overflow:auto}
+.mr-note{border-radius:8px;padding:9px 11px;font-size:12px;line-height:18px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary)}
+.mr-preview{display:flex;flex-direction:column;gap:4px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:10px 12px;background:var(--dsw-alias-bg-layer-2);max-height:260px;overflow:auto}
 .mr-preview-group{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--dsw-alias-label-tertiary);padding:6px 0 2px}
 .mr-preview-row{display:flex;align-items:center;gap:6px;font-size:13px;padding:2px 0}
 .mr-preview-row .mr-check{color:var(--dsw-alias-label-primary);flex:none;width:14px}
@@ -365,13 +378,27 @@ window.__ModuleLoader__.load({
    settings scroller, which is what made the buttons cover the member text. */
 .mr-sticky-actions{position:static;margin-top:2px;background:transparent;border-top:1px solid var(--dsw-alias-border-l2);padding:12px 0 4px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .mr-tabs{display:flex;gap:4px;border-bottom:1px solid var(--dsw-alias-border-l2);padding-bottom:2px}
+/* Collapsible detail block. The summary row is the whole affordance: a chevron,
+   a label, and a one-line digest so a collapsed block still says what it hides. */
+.mr-disclosure{border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);overflow:hidden}
+.mr-disclosure > summary{display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;list-style:none;font-size:12px;color:var(--dsw-alias-label-secondary);user-select:none}
+.mr-disclosure > summary::-webkit-details-marker{display:none}
+.mr-disclosure > summary:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.mr-disclosure > summary:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
+.mr-disclosure-chevron{flex:none;width:12px;transition:transform .15s ease;color:var(--dsw-alias-label-tertiary)}
+.mr-disclosure[open] .mr-disclosure-chevron{transform:rotate(90deg)}
+.mr-disclosure-title{font-weight:500;color:var(--dsw-alias-label-primary);flex:none}
+.mr-disclosure-digest{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}
+.mr-disclosure-body{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:2px 12px 12px;border-top:1px solid var(--dsw-alias-border-l2)}
+.mr-disclosure-body.mr-plain{display:block;padding-top:10px}
+@media(prefers-reduced-motion:reduce){.mr-disclosure-chevron{transition:none}}
 .mr-tab{border:none;border-radius:8px 8px 0 0;background:transparent;padding:7px 14px;font-size:13px;color:var(--dsw-alias-label-secondary);cursor:pointer}
 .mr-tab.is-active{background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary);font-weight:500}
 .mr-log{display:flex;flex-direction:column;gap:8px}
-.mr-log-row{border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:9px 11px;background:var(--dsw-alias-bg-page-primary);display:flex;flex-direction:column;gap:6px}
+.mr-log-row{border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:9px 11px;background:var(--dsw-alias-bg-layer-1);display:flex;flex-direction:column;gap:6px}
 .mr-log-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px}
-.mr-log-time{font-family:var(--dsw-font-mono,ui-monospace,monospace);font-size:11px;color:var(--dsw-alias-label-tertiary);flex:none}
-.mr-log-route{font-family:var(--dsw-font-mono,ui-monospace,monospace);font-size:12px;overflow-wrap:anywhere}
+.mr-log-time{font-family:var(--dsw-font-markdown-code-font-family,ui-monospace,monospace);font-size:11px;color:var(--dsw-alias-label-tertiary);flex:none}
+.mr-log-route{font-family:var(--dsw-font-markdown-code-font-family,ui-monospace,monospace);font-size:12px;overflow-wrap:anywhere}
 .mr-log-chain{display:flex;flex-direction:column;gap:2px;padding-left:2px}
 .mr-log-attempt{display:flex;align-items:baseline;gap:6px;font-size:11px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}
 .mr-badge{font-size:11px;line-height:16px;padding:1px 7px;border-radius:999px;white-space:nowrap;flex:none}
@@ -382,7 +409,7 @@ window.__ModuleLoader__.load({
 .mr-badge.skipped{background:transparent;border:1px dashed var(--dsw-alias-border-l2);color:var(--dsw-alias-label-tertiary)}
 .mr-log-usage{font-size:11px;color:var(--dsw-alias-label-tertiary)}
 .mr-log-empty{padding:18px;text-align:center;color:var(--dsw-alias-label-secondary);font-size:13px}
-.mr-code{font-family:var(--dsw-font-mono,ui-monospace,monospace);font-size:11px;color:var(--dsw-alias-label-tertiary);overflow-wrap:anywhere}
+.mr-code{font-family:var(--dsw-font-markdown-code-font-family,ui-monospace,monospace);font-size:11px;color:var(--dsw-alias-label-tertiary);overflow-wrap:anywhere}
 @media(max-width:560px){.mr-tier-head{grid-template-columns:1fr}.mr-member-main{grid-template-columns:1fr}}
 `
 
@@ -462,6 +489,29 @@ window.__ModuleLoader__.load({
         h('span', null, label),
         children,
         hint === undefined ? null : h('small', null, hint))
+    }
+
+    /**
+     * A collapsed-by-default block for the knobs most people never touch.
+     *
+     * Retry count, timeout, effort, and budgets are per-member settings that are
+     * usually left alone; showing eight inputs per member made a three-member
+     * tier taller than the settings panel. The summary row therefore carries the
+     * *current* values as a digest, so a collapsed block still answers "what is
+     * this member set to" without opening it.
+     *
+     * Uses native `<details>` rather than React state on purpose: the browser
+     * owns the open/closed state, it is keyboard-accessible for free, and it
+     * survives a re-render without the page having to remember anything.
+     * @param {{title?: string, digest?: string, children: any, plain?: boolean}} props - digest text and body.
+     */
+    function Disclosure({ title, digest, children, plain }) {
+      return h('details', { className: 'mr-disclosure' },
+        h('summary', null,
+          h('span', { className: 'mr-disclosure-chevron', 'aria-hidden': 'true' }, '›'),
+          title === undefined ? null : h('span', { className: 'mr-disclosure-title' }, title),
+          digest === undefined || digest === '' ? null : h('span', { className: 'mr-disclosure-digest' }, digest)),
+        h('div', { className: plain === true ? 'mr-disclosure-body mr-plain' : 'mr-disclosure-body' }, children))
     }
 
     /** A numeric input that reports `undefined` for an empty field. */
@@ -630,6 +680,19 @@ window.__ModuleLoader__.load({
               type: 'button', className: 'mr-icon mr-danger', 'aria-label': t('member.remove'), title: t('member.remove'),
               onClick: onRemove,
             }, '✕'))),
+        // Eight inputs per member made a three-member tier taller than the
+        // settings panel, so the knobs live behind a disclosure. The digest
+        // repeats their current values, which is what you came to check.
+        h(Disclosure, {
+          digest: [
+            `${t('member.attempts')} ${member.attempts}`,
+            `${t('member.timeout')} ${member.idleTimeoutMs === 0 ? t('member.unlimited') : `${toSeconds(member.idleTimeoutMs)}${t('member.timeoutUnit')}`}`,
+            member.reasoningEffort === undefined ? t('member.effortDefault') : member.reasoningEffort,
+            member.contextWindow === undefined
+              ? `${t('member.context')} ${inheritedContext === undefined ? t('member.defaultAuto') : inheritedContext}`
+              : `${t('member.context')} ${member.contextWindow}`,
+          ].join(' · '),
+        },
         h('div', { className: 'mr-member-knobs' },
           h(Field, { label: t('member.attempts'), hint: t('member.attemptsHint') },
             h(NumberInput, {
@@ -667,7 +730,7 @@ window.__ModuleLoader__.load({
               value: member.maxTokens, ariaLabel: t('member.maxTokens'),
               placeholder: inheritedMax === undefined ? t('member.defaultAuto') : String(inheritedMax),
               onChange: maxTokens => onChange(maxTokens === undefined ? without('maxTokens') : { ...member, maxTokens }),
-            }))))
+            })))))
     }
 
     // ── tier card ───────────────────────────────────────────────────────────
@@ -711,6 +774,14 @@ window.__ModuleLoader__.load({
           h('span', { className: 'mr-pill' }, String(tier.members.length))),
         // Tier-level defaults. A member that sets its own value wins, so these
         // are the "apply to the whole chain" controls rather than duplicates.
+        // Collapsed by default too: most tiers never set either of them.
+        h(Disclosure, {
+          title: t('tiers.defaults'),
+          digest: [
+            tier.reasoningEffort === undefined ? t('member.effortDefault') : `${t('member.effort')} ${tier.reasoningEffort}`,
+            tier.contextWindow === undefined ? t('member.defaultAuto') : `${t('member.context')} ${tier.contextWindow}`,
+          ].join(' · '),
+        },
         h('div', { className: 'mr-member-knobs' },
           h(Field, { label: t('member.effort'), hint: t('member.effortHint') },
             h('select', {
@@ -733,7 +804,7 @@ window.__ModuleLoader__.load({
                 const { contextWindow: _drop, ...rest } = tier
                 onChange(contextWindow === undefined ? rest : { ...rest, contextWindow })
               },
-            }))),
+            })))),
         tier.members.length === 0
           ? h('div', { className: 'mr-empty' }, h('p', null, t('tiers.membersEmpty')))
           : h('div', { className: 'mr-members' }, tier.members.map((member, memberIndex) => h(MemberRow, {
@@ -1248,7 +1319,7 @@ window.__ModuleLoader__.load({
     exports.apply = apply
     exports.inject = inject
     exports.name = 'model-router'
-    exports.__test = { DICT, makeTierId, fromSeconds, toSeconds, move, setHideRule }
+    exports.__test = { DICT, CSS, makeTierId, fromSeconds, toSeconds, move, setHideRule }
     return module.exports
   },
 })

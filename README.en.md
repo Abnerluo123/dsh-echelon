@@ -37,6 +37,8 @@ From then on, changing what "Daily" runs on means reordering that tier's members
 | **Reasoning effort** | Empty follows the session's own choice; a chosen level is the only one that member uses. |
 | **Exposure** | Tiers only / hide only what I check / show everything. |
 
+The per-member knobs are collapsed by default; the summary still shows their current values, so a collapsed block answers "what is this member set to" without opening it.
+
 Tiers and members both take a reasoning effort and a context window. **A member's own value wins**; otherwise the tier's default applies; otherwise the model and session decide. That way a whole chain can be retuned by editing one tier field instead of visiting every member.
 
 ## Behaviour
