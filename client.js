@@ -378,7 +378,7 @@ window.__ModuleLoader__.load({
 .mr-tier-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}
 .mr-tier-name{display:flex;align-items:center;gap:8px;min-width:0}
 .mr-tier-name input{flex:1;min-width:80px;font-size:14px;font-weight:500}
-.mr-pill{font-size:11px;line-height:16px;padding:1px 7px;border-radius:999px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.mr-pill{font-size:11px;line-height:16px;padding:1px 7px;border-radius:999px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);white-space:nowrap;align-self:flex-start;width:fit-content}
 .mr-members{display:flex;flex-direction:column;gap:8px}
 .mr-member{display:flex;flex-direction:column;gap:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:10px;background:var(--dsw-alias-bg-layer-1)}
 .mr-member.is-off{opacity:.55}
