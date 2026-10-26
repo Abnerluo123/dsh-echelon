@@ -68,7 +68,7 @@ Requires **DSH ≥ 0.2.0-rc.1** and **Node ≥ 22.14.0**. **Restart `dsh`** afte
 - **Tier defaults**: one timeout and retry count for the whole chain, used by members that do not set their own.
 - **Default level for new chats**: follow the model, or pin one of the five levels.
 - **Reasoning mapping switch**: on means one five-level vocabulary in the picker, translated onto each member at dispatch (nearest published level, or the model's default when it publishes none); off shows each model's own levels and forwards them as written. The per-member control in the editor always offers only that model's own levels — it pins one member, so it must not name a level that member cannot honour.
-- **Image routing**: pick a member that can see; only the current turn's image counts (an older image stops affecting selection).
+- **Image routing**: as long as an image is still in the conversation — including one attached several turns ago — the request goes to a member that can see. DSH flattens images based on the *dispatched member's* own declaration, so handing an image-bearing request to a text model only earns "I can't see any image".
 - **Request log**: each turn shows **tier → real model**, how the level was translated (`xhigh → max`, or not sent at all), every member tried, why each was skipped, duration and tokens. Written to disk, so a restart does not erase it; 128 turns kept by default, switchable off.
 - **Context shorthand**: `1m`, `256k`, `128k` or plain digits — no counting zeros. `k`=1000, `m`=1000000 (decimal, so what the field shows is what it means).
 - **Saves apply immediately**: no restart, no page reload. One button top-right: save-and-reload when there are edits, plain reload when there are none.

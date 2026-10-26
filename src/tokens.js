@@ -162,38 +162,25 @@ export function contentHasVisibleImage(content) {
 }
 
 /**
- * The messages that belong to the current turn.
- *
- * Everything after the last assistant message: the new user input plus any tool
- * results it triggered (a browser screenshot arrives as a tool result, so
- * "the latest user message" alone would miss it).
- * @param {Array<object>} messages - the full request.
- * @returns {Array<object>} the current turn's new inputs.
- */
-export function currentTurnMessages(messages) {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index]?.role === 'assistant') return messages.slice(index + 1)
-  }
-  return messages
-}
-
-/**
  * Whether a request needs a model that can see.
  *
- * Two scopes, because carrying an image has two very different lifetimes:
+ * Every image still in the conversation counts, not just the one attached to the
+ * current turn. That is not a preference: DSH projects an image to text for any
+ * member whose own `inputModalities` excludes `image` (see
+ * `dsh-llm/lib/index.js`, the `projectImagesForTextModel` call in `adapterStream`),
+ * and `prepared.modelInfo` there is the *dispatched member's* info, not the
+ * tier's.
  *
- * - `context` — any image still in the conversation. Strictly correct, but a
- *   single image attached early keeps every later turn on a vision model, even
- *   when the new question is plain text.
- * - `recent` — only the current turn's new inputs. Lets a cheap text model take
- *   over once the image has been discussed; the older image is then flattened to
- *   a placeholder by DSH for that member, which is a degradation, not a failure.
+ * So routing a follow-up question to a text-only member does not "save a vision
+ * model" — it replaces the screenshot with a placeholder, and the model then
+ * truthfully reports that it cannot see any image. That was the reported bug: an
+ * earlier scope option (`recent`) ignored older images, which silently dropped
+ * them from the model's view while the user could still see them in the
+ * transcript.
  * @param {object} options - the generate options about to be dispatched.
- * @param {'context' | 'recent'} [scope] - which messages to inspect.
- * @returns {boolean} true when the request needs vision.
+ * @returns {boolean} true when the conversation carries a live image.
  */
-export function requestHasImage(options, scope = 'context') {
+export function requestHasImage(options) {
   const messages = Array.isArray(options?.messages) ? options.messages : []
-  const inspect = scope === 'recent' ? currentTurnMessages(messages) : messages
-  return inspect.some(message => contentHasVisibleImage(message?.content))
+  return messages.some(message => contentHasVisibleImage(message?.content))
 }

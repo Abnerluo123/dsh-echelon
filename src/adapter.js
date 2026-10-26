@@ -514,13 +514,19 @@ export class RouterAdapter extends Adapter {
         return undefined
       }
     }))
-    const usable = infos.filter(Boolean)
-    if (usable.length === 0) return base
+    // `infos` stays index-aligned with `chain`. An earlier version compacted it
+    // with `.filter(Boolean)` and then indexed the compacted array, so one
+    // unresolvable member shifted every later member onto its neighbour's entry.
+    // The advertised numbers happen to be order-independent (`Math.max` over the
+    // windows, `Math.min` over the outputs), which is why this never produced a
+    // wrong number — but the alignment is what the code reads as, and the next
+    // person to use a per-member value here would have inherited a silent bug.
+    if (infos.every(info => info === undefined)) return base
     // A member's own declared window replaces what its model reports: the user
     // may know their gateway truncates earlier than the model's headline number.
-    const windows = chain.map((member, index) => member.contextWindow ?? usable[index]?.context?.contextWindow)
+    const windows = chain.map((member, index) => member.contextWindow ?? infos[index]?.context?.contextWindow)
       .filter(window => Number.isInteger(window) && window > 0)
-    const defaults = chain.map((member, index) => member.maxTokens ?? usable[index]?.defaultMaxTokens)
+    const defaults = chain.map((member, index) => member.maxTokens ?? infos[index]?.defaultMaxTokens)
       .filter(tokens => Number.isSafeInteger(tokens) && tokens > 0)
     // What the picker shows depends on the mapping switch, because the two
     // modes mean different things:
@@ -697,7 +703,7 @@ export class RouterAdapter extends Adapter {
    * @param {object} options - the request about to be dispatched.
    * @returns {Promise<{ordered: Array<object>, skipped: Array<object>, estimate: number, fits: boolean}>} routing decision.
    */
-  async #routeByContext(llm, chain, options, strategy, modalityRouting, imageScope) {
+  async #routeByContext(llm, chain, options, strategy, modalityRouting) {
     const estimate = estimateRequestTokens(options, this.#meter()).inputTokens
     // Even a single-member chain needs its efforts, for mapping.
     const resolved = new Map()
@@ -721,7 +727,10 @@ export class RouterAdapter extends Adapter {
     })
     // A request carrying an image must not land on a member DSH would flatten it
     // for: that is silent data loss, and it looks like the model "got dumber".
-    const vision = requestHasImage(options, imageScope) && modalityRouting !== false
+    // Every image still in the conversation counts — DSH flattens per dispatched
+    // member, so an older screenshot would be replaced with a placeholder just as
+    // surely as a fresh one.
+    const vision = requestHasImage(options) && modalityRouting !== false
     const split = modalityRouting === false ? { usable: enriched, skipped: [] } : splitByModality(enriched, vision)
     if (split.usable.length === 0) {
       // No member can see. Proceed with the whole chain anyway: DSH projects the
@@ -783,7 +792,7 @@ export class RouterAdapter extends Adapter {
     // any of them. A tier spans models with different windows, so the whole
     // point of advertising the largest one is that the dispatcher then routes by
     // size instead of letting a smaller member reject the prompt.
-    const routed = await this.#routeByContext(llm, chain, options, tier.contextStrategy, settings.modalityRouting, settings.imageScope)
+    const routed = await this.#routeByContext(llm, chain, options, tier.contextStrategy, settings.modalityRouting)
 
     const tried = []
     let budget = MAX_ATTEMPTS_PER_TURN

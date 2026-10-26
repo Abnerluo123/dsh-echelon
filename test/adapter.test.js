@@ -605,6 +605,32 @@ test('a tier override applies to every member that does not set its own', async 
   assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['off', 'low', 'middle', 'high', 'xhigh'], 'mapping on always offers the ladder')
 })
 
+test('one unresolvable member does not disturb the advertised capacity', async () => {
+  // `resolveModel` used to compact its info list with `.filter(Boolean)` and then
+  // index the compacted array, so a member that failed to resolve shifted its
+  // neighbours onto the wrong entries. The reduction is order-independent, so no
+  // number changed — this pins the alignment anyway, because the next per-member
+  // read would have inherited the bug.
+  const { adapter } = wire(
+    tierSettings([
+      { provider: 'dead', model: 'one' },
+      { provider: 'small', model: 'two', maxTokens: 4_096 },
+      { provider: 'big', model: 'three', maxTokens: 64_000 },
+    ]),
+    {
+      models: {
+        // No entry for `dead`, so its lookup rejects.
+        small: { models: [{ id: 'two', contextWindow: 32_000 }] },
+        big: { models: [{ id: 'three', contextWindow: 1_000_000 }] },
+      },
+      routes: {},
+    },
+  )
+  const info = await adapter.resolveModel('model-router', 'auto')
+  assert.equal(info.context.contextWindow, 1_000_000, 'the largest window still wins')
+  assert.equal(info.defaultMaxTokens, 4_096, 'the smallest output default still wins')
+})
+
 test('a request too large for the head member routes to the one that fits', async () => {
   // The reported case: one tier mixing a 300K and a 1M model. The tier now
   // advertises 1M, and a large request must skip the 300K member instead of
@@ -1222,9 +1248,10 @@ const HISTORY_WITH_OLD_IMAGE = [
   { role: 'user', content: [{ type: 'text', text: '好，那帮我写代码' }] },
 ]
 
-test('an image from an earlier turn stops forcing a vision member by default', async () => {
-  // The switch defaults to the current turn, so a picture discussed two turns
-  // ago no longer locks the session onto the expensive vision lane.
+test('an image from an earlier turn still forces a vision member', async () => {
+  // The reported bug. The picture is two turns back, but it is still in the
+  // prompt; DSH replaces it with a placeholder for any member that declares
+  // text-only, and the model then answers "I can't see any image".
   const { adapter, log } = wire(
     tierSettings([{ provider: 'blind', model: 'one' }, { provider: 'eyes', model: 'two' }]),
     {
@@ -1236,12 +1263,19 @@ test('an image from an earlier turn stops forcing a vision member by default', a
     },
   )
   await collect(adapter, 'auto', { messages: HISTORY_WITH_OLD_IMAGE })
-  assert.equal(log.read().entries[0].provider, 'blind', 'the old image does not apply to this turn')
+  assert.equal(log.read().entries[0].provider, 'eyes', 'the older image is still in the prompt')
+  assert.equal(log.read().entries[0].vision, true)
 })
 
-test('the context scope keeps the image in force for the whole conversation', async () => {
-  const store = makeStore({ ...tierSettings([{ provider: 'blind', model: 'one' }, { provider: 'eyes', model: 'two' }]), imageScope: 'context' })
-  const adapter = new RouterAdapter({ store, logger: {} })
+test('a forced vision member is dropped when the provider declares text-only', async () => {
+  // DSH flattens images from the dispatched member's own `inputModalities`, which
+  // this plugin cannot override. Believing a forced "sees images" there routes an
+  // image to a lane that is guaranteed to receive a placeholder.
+  const forced = makeStore(tierSettings([
+    { provider: 'blind', model: 'one', seesImages: true },
+    { provider: 'eyes', model: 'two' },
+  ]))
+  const adapter = new RouterAdapter({ store: forced, logger: {} })
   adapter.ctx = { llm: makeLlm({
     models: {
       blind: { models: [{ id: 'one', inputModalities: ['text'] }] },
@@ -1250,7 +1284,26 @@ test('the context scope keeps the image in force for the whole conversation', as
     routes: { 'blind/one': [answer('blind')], 'eyes/two': [answer('eyes')] },
   }) }
   await collect(adapter, 'auto', { messages: HISTORY_WITH_OLD_IMAGE })
-  assert.equal(adapter.requestLog.read().entries[0].provider, 'eyes', 'the stricter scope still skips the blind member')
+  assert.equal(adapter.requestLog.read().entries[0].provider, 'eyes', 'the declaration wins over the override')
+})
+
+test('a forced vision member still works when the provider declares nothing', async () => {
+  // The case the override exists for: a gateway that accepts images without
+  // disclosing them. DSH leaves those untouched, so the override is effective.
+  const forced = makeStore(tierSettings([
+    { provider: 'quiet', model: 'one', seesImages: true },
+    { provider: 'eyes', model: 'two' },
+  ]))
+  const adapter = new RouterAdapter({ store: forced, logger: {} })
+  adapter.ctx = { llm: makeLlm({
+    models: {
+      quiet: { models: [{ id: 'one' }] },
+      eyes: { models: [{ id: 'two', inputModalities: ['text', 'image'] }] },
+    },
+    routes: { 'quiet/one': [answer('quiet')], 'eyes/two': [answer('eyes')] },
+  }) }
+  await collect(adapter, 'auto', { messages: HISTORY_WITH_OLD_IMAGE })
+  assert.equal(adapter.requestLog.read().entries[0].provider, 'quiet')
 })
 
 test('an offloaded image does not exclude text-only members', async () => {

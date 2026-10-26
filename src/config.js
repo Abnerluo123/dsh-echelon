@@ -490,10 +490,6 @@ export function normalizeSettings(raw) {
     // actually see it. Off means "keep chain order even if the image gets
     // flattened to text", which is only sensible for debugging.
     modalityRouting: source.modalityRouting !== false,
-    // Image scope: 'recent' inspects only the current turn's new inputs, so an
-    // image discussed three turns ago stops forcing a vision model. 'context'
-    // inspects the whole conversation, which is stricter but locks the session.
-    imageScope: source.imageScope === 'context' ? 'context' : 'recent',
   }
 }
 
@@ -725,13 +721,22 @@ export function isRetryable(code) {
  * that made a real vision model report "I can't see your image": the tier
  * advertised text-only, so DSH replaced the image with a placeholder before the
  * router ever chose a member.
+ *
+ * **A forced `seesImages: true` cannot beat an explicit text-only declaration.**
+ * Flattening is decided inside DSH from the dispatched member's own
+ * `inputModalities` (`dsh-llm`, `adapterStream`), which this plugin cannot
+ * override. Believing the override here would route an image to a member that is
+ * guaranteed to receive a placeholder — the second way the model ends up saying
+ * it cannot see a picture that is plainly attached. The override therefore only
+ * takes effect where it can work: a member that declares nothing at all.
  * @param {object} member - chain entry, optionally carrying `seesImages`.
  * @returns {true | false | undefined} true = declares/forced vision, false = explicitly text-only, undefined = not disclosed.
  */
 export function visionOf(member) {
-  if (member?.seesImages === true) return true
-  if (member?.seesImages === false) return false
   const declared = member?.inputModalities
+  const declaredTextOnly = Array.isArray(declared) && !declared.includes('image')
+  if (member?.seesImages === true) return declaredTextOnly ? false : true
+  if (member?.seesImages === false) return false
   if (!Array.isArray(declared)) return undefined
   return declared.includes('image')
 }

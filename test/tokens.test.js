@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { orderByContext } from '../src/config.js'
-import { contentHasVisibleImage, currentTurnMessages, estimateMessageTokens, estimateRequestTokens, fitsContext, inputBudgetFor, requestHasImage, textTokens } from '../src/tokens.js'
+import { contentHasVisibleImage, estimateMessageTokens, estimateRequestTokens, fitsContext, inputBudgetFor, requestHasImage, textTokens } from '../src/tokens.js'
 
 const text = body => [{ type: 'text', text: body }]
 const member = (provider, contextWindow, extra = {}) => ({ provider, model: 'm', attempts: 0, idleTimeoutMs: 1, ...(contextWindow === undefined ? {} : { contextWindow }), ...extra })
@@ -176,31 +176,27 @@ test('an offloaded image no longer counts as an image', () => {
   assert.equal(contentHasVisibleImage(undefined), false)
 })
 
-test('the context scope sees an image anywhere in the conversation', () => {
-  const messages = [msg('user', [img()]), msg('assistant', [{ type: 'text', text: 'ok' }]), msg('user', [{ type: 'text', text: 'thanks' }])]
-  assert.equal(requestHasImage({ messages }, 'context'), true)
-})
-
-test('the recent scope ignores an image from an earlier turn', () => {
-  const messages = [msg('user', [img()]), msg('assistant', [{ type: 'text', text: 'ok' }]), msg('user', [{ type: 'text', text: 'thanks' }])]
-  assert.equal(requestHasImage({ messages }, 'recent'), false, 'the current turn is text only')
-})
-
-test('the recent scope still sees an image in the current turn', () => {
-  const messages = [msg('user', [{ type: 'text', text: 'earlier' }]), msg('assistant', [{ type: 'text', text: 'ok' }]), msg('user', [img()])]
-  assert.equal(requestHasImage({ messages }, 'recent'), true)
-})
-
-test('currentTurnMessages starts after the last assistant message', () => {
-  const messages = [msg('user', [{ type: 'text', text: 'a' }]), msg('assistant', [{ type: 'text', text: 'b' }]), msg('user', [{ type: 'text', text: 'c' }]), msg('tool', [{ type: 'text', text: 'd' }])]
-  assert.deepEqual(currentTurnMessages(messages).map(m => m.content[0].text), ['c', 'd'], 'tool results belong to the turn too')
-  // No assistant yet: the whole list is the current turn.
-  const first = [msg('user', [{ type: 'text', text: 'only' }])]
-  assert.deepEqual(currentTurnMessages(first).map(m => m.role), ['user'])
+test('any image still in the conversation requires vision', () => {
+  // This is the reported bug. An image attached three turns ago is still part of
+  // the prompt; DSH flattens it for any member whose own declaration excludes
+  // `image`, so routing the follow-up to a text model replaces the screenshot
+  // with a placeholder and the model answers "I can't see any image".
+  const followUp = [msg('user', [img()]), msg('assistant', [{ type: 'text', text: 'ok' }]), msg('user', [{ type: 'text', text: 'thanks' }])]
+  assert.equal(requestHasImage({ messages: followUp }), true, 'an older image still counts')
+  const current = [msg('user', [{ type: 'text', text: 'earlier' }]), msg('assistant', [{ type: 'text', text: 'ok' }]), msg('user', [img()])]
+  assert.equal(requestHasImage({ messages: current }), true, 'a fresh image counts')
+  const textOnly = [msg('user', [{ type: 'text', text: 'hi' }]), msg('assistant', [{ type: 'text', text: 'ok' }])]
+  assert.equal(requestHasImage({ messages: textOnly }), false)
 })
 
 test('a screenshot in a tool result still requires vision', () => {
   // A browser tool returns an image as a tool result, not as a user message.
   const messages = [msg('user', [{ type: 'text', text: 'open it' }]), msg('assistant', [{ type: 'text', text: 'ok' }]), msg('tool', [img()])]
-  assert.equal(requestHasImage({ messages }, 'recent'), true, 'tool-result images count for the current turn')
+  assert.equal(requestHasImage({ messages }), true, 'tool-result images count')
+})
+
+test('an offloaded image does not require vision', () => {
+  // DSH only marks a block offloaded once the image is gone from the prompt.
+  const messages = [msg('user', [img({ offloaded: true })]), msg('assistant', [{ type: 'text', text: 'ok' }])]
+  assert.equal(requestHasImage({ messages }), false)
 })
