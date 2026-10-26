@@ -3,9 +3,24 @@
  * @module test/log.test.js
  */
 import assert from 'node:assert/strict'
-import { test } from 'node:test'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { after, test } from 'node:test'
 import { DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT, MIN_LOG_LIMIT } from '../src/config.js'
 import { RequestLog, clampLogLimit, usageOf } from '../src/log.js'
+
+const directories = []
+after(() => {
+  for (const directory of directories) rmSync(directory, { recursive: true, force: true })
+})
+
+/** A throwaway path for a persisted log. */
+function logFile() {
+  const directory = mkdtempSync(join(tmpdir(), 'router-log-'))
+  directories.push(directory)
+  return join(directory, 'request-log.json')
+}
 
 /** A log seeded with `count` committed entries. */
 function seeded(count, limit) {
@@ -118,6 +133,55 @@ test('read honours an explicit limit', () => {
   const log = seeded(10, 20)
   assert.equal(log.read({ limit: 3 }).entries.length, 3)
   assert.equal(log.read({ limit: 0 }).entries.length, 1, 'a zero limit clamps to one')
+})
+
+test('a persisted log survives a restart', () => {
+  // The log used to be memory-only, so the evidence of a crash vanished with the
+  // process that produced it — exactly when it was worth reading.
+  const file = logFile()
+  const first = new RequestLog({ limit: 128, file })
+  for (const model of ['a', 'b', 'c']) {
+    const turn = first.begin({ tier: 'auto', tierName: 'Auto' })
+    turn.attempt({ provider: 'p', model, attempt: 1, outcome: 'ok' })
+    turn.commit({ outcome: 'ok', provider: 'p', model })
+  }
+  assert.ok(readFileSync(file, 'utf8').includes('"model":"c"'), 'the file is written on commit')
+
+  const second = new RequestLog({ limit: 128, file })
+  const entries = second.read().entries
+  assert.deepEqual(entries.map(entry => entry.model), ['c', 'b', 'a'], 'newest first after reload')
+  // Ids keep climbing, so a client holding `newestId` cannot collide with new rows.
+  const next = second.begin({ tier: 'auto', tierName: 'Auto' })
+  assert.ok(next.draft.id > 3)
+})
+
+test('a corrupt log file is treated as empty instead of failing', () => {
+  // A debugging surface must never become a startup failure.
+  const file = logFile()
+  writeFileSync(file, '{ not json', 'utf8')
+  const log = new RequestLog({ limit: 128, file })
+  assert.equal(log.read().total, 0)
+  // ...and it recovers on the next write.
+  log.begin({ tier: 'auto', tierName: 'Auto' }).commit({ outcome: 'ok' })
+  assert.equal(new RequestLog({ limit: 128, file }).read().total, 1)
+})
+
+test('a persisted log is trimmed to the retention limit', () => {
+  const file = logFile()
+  const log = new RequestLog({ limit: 128, file })
+  for (let index = 0; index < 40; index += 1) {
+    log.begin({ tier: 'auto', tierName: 'Auto' }).commit({ outcome: 'ok', provider: 'p', model: `m${index}` })
+  }
+  log.setLimit(20)
+  assert.equal(new RequestLog({ limit: 20, file }).read().total, 20, 'the file is rewritten, not just the memory')
+})
+
+test('clearing a persisted log empties the file too', () => {
+  const file = logFile()
+  const log = new RequestLog({ limit: 128, file })
+  log.begin({ tier: 'auto', tierName: 'Auto' }).commit({ outcome: 'ok' })
+  log.clear()
+  assert.equal(new RequestLog({ limit: 128, file }).read().total, 0)
 })
 
 test('usageOf takes the last usage chunk of the committed stream', () => {

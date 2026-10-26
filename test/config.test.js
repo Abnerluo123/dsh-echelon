@@ -115,14 +115,14 @@ test('member knobs are clamped instead of trusted', () => {
   assert.equal(normalizeMember({ provider: 'p', model: 'm', idleTimeoutMs: 10 ** 9 }).idleTimeoutMs, MAX_IDLE_TIMEOUT_MS)
 })
 
-test('the timeout range is two to sixty seconds, defaulting to six', () => {
+test('the timeout range is three to sixty seconds, defaulting to six', () => {
   // DSH retries a failed turn itself, and a retry is cheaper than waiting out a
   // dead lane, so the ceiling is deliberately short.
   assert.equal(DEFAULT_IDLE_TIMEOUT_MS, 6_000)
-  assert.equal(MIN_IDLE_TIMEOUT_MS, 2_000)
+  assert.equal(MIN_IDLE_TIMEOUT_MS, 3_000)
   assert.equal(MAX_IDLE_TIMEOUT_MS, 60_000)
   assert.equal(normalizeSettings({}).defaultIdleTimeoutMs, 6_000)
-  assert.equal(normalizeSettings({ defaultIdleTimeoutMs: 1 }).defaultIdleTimeoutMs, 2_000)
+  assert.equal(normalizeSettings({ defaultIdleTimeoutMs: 1 }).defaultIdleTimeoutMs, 3_000)
   assert.equal(normalizeSettings({ defaultIdleTimeoutMs: 600_000 }).defaultIdleTimeoutMs, 60_000)
   // 0 still means "no limit" for the global default: that is an explicit choice.
   assert.equal(normalizeSettings({ defaultIdleTimeoutMs: 0 }).defaultIdleTimeoutMs, 0)
@@ -318,11 +318,13 @@ test('tier-level defaults survive storage and reach the chain', () => {
 test('log retention settings are clamped and default on', () => {
   const shipped = normalizeSettings(undefined)
   assert.equal(shipped.logRequests, true)
-  assert.equal(shipped.logLimit, 200)
+  // 128 turns: the log is persisted now, so this is how much history a restart
+  // keeps rather than how much fits in memory.
+  assert.equal(shipped.logLimit, 128)
 
   assert.equal(normalizeSettings({ logLimit: 5 }).logLimit, 20)
   assert.equal(normalizeSettings({ logLimit: 10 ** 6 }).logLimit, 2_000)
-  assert.equal(normalizeSettings({ logLimit: 'x' }).logLimit, 200)
+  assert.equal(normalizeSettings({ logLimit: 'x' }).logLimit, 128)
   assert.equal(normalizeSettings({ logRequests: false }).logRequests, false)
 })
 

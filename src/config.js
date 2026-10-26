@@ -62,8 +62,8 @@ export const DEFAULT_ATTEMPTS = 1
  */
 export const DEFAULT_IDLE_TIMEOUT_MS = 6_000
 
-/** Accepted range for an idle timeout: 2s … 60s, or 0 for "wait forever". */
-export const MIN_IDLE_TIMEOUT_MS = 2_000
+/** Accepted range for an idle timeout: 3s … 60s, or 0 for "wait forever". */
+export const MIN_IDLE_TIMEOUT_MS = 3_000
 export const MAX_IDLE_TIMEOUT_MS = 60_000
 
 /**
@@ -142,8 +142,14 @@ export function formatTokenBudget(value) {
   return String(tokens)
 }
 
-/** Request-log retention. Bounded so a long-running host cannot grow forever. */
-export const DEFAULT_LOG_LIMIT = 200
+/**
+ * Request-log retention. Bounded so a long-running host cannot grow forever.
+ *
+ * The log is now persisted, so this is the number of turns kept *across restarts*
+ * rather than in memory. 128 is about a working day of turns: enough to look up
+ * the failure you just had, small enough that the file stays trivial.
+ */
+export const DEFAULT_LOG_LIMIT = 128
 export const MIN_LOG_LIMIT = 20
 export const MAX_LOG_LIMIT = 2_000
 

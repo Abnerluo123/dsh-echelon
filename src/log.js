@@ -1,5 +1,5 @@
 /**
- * In-memory request log.
+ * Request log, persisted to disk.
  *
  * The question this answers is the one a tier makes impossible to answer by
  * looking at the transcript: *which* model actually served that turn, which
@@ -7,18 +7,22 @@
  *
  * Design notes
  * ------------
- * - **Memory only, bounded.** A tier hides its members, so the log is the only
- *   place the physical route is visible at all — but it is also a debugging
- *   surface, not an audit trail. It holds the last N entries and resets with the
- *   process, which is why nothing here touches the disk.
+ * - **Bounded, and on disk.** Holds the last N entries (128 by default) in a
+ *   JSON file next to the settings, so restarting the Harness does not erase the
+ *   turn you were about to investigate. It used to be memory-only, which meant the
+ *   evidence disappeared exactly when a crash made it interesting.
  * - **Append-at-finish.** An entry is written once, when a turn settles, from a
  *   mutable draft the adapter fills in as it goes. Nothing observes a
  *   half-written attempt, and a long streaming answer costs no extra work.
  * - **Read-only to the outside.** The HTTP layer may list and clear; it cannot
  *   inject a row.
+ * - **A broken file is not an error.** An unreadable or malformed log is treated
+ *   as empty: losing history must never cost a turn.
  *
  * @module src/log.js
  */
+import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT, MIN_LOG_LIMIT } from './config.js'
 
 /** How many attempts a single entry keeps before coalescing the rest into a count. */
@@ -36,7 +40,7 @@ export function clampLogLimit(value) {
 }
 
 /**
- * A bounded, newest-first request log.
+ * A bounded, newest-first request log, optionally backed by a file.
  */
 export class RequestLog {
   /** @type {object[]} */
@@ -45,17 +49,87 @@ export class RequestLog {
   #limit
   /** Monotonic id source, so a client can poll for "everything after N". */
   #sequence = 0
+  /** @type {string | undefined} */
+  #file
+  /** @type {(message: string) => void} */
+  #log
 
   /**
-   * @param {{limit?: number}} [options] - initial retention.
+   * @param {{limit?: number, file?: string, log?: (message: string) => void}} [options] - retention and storage.
    */
   constructor(options = {}) {
     this.#limit = clampLogLimit(options.limit)
+    this.#file = options.file
+    this.#log = options.log ?? (() => {})
+    if (this.#file !== undefined) this.#restore()
   }
 
   /** @returns {number} how many entries are retained. */
   get limit() {
     return this.#limit
+  }
+
+  /** @returns {string | undefined} the backing file, when there is one. */
+  get file() {
+    return this.#file
+  }
+
+  /**
+   * Load whatever survived the last run.
+   *
+   * Failures are swallowed on purpose: a corrupt log is a debugging inconvenience,
+   * while a throw here would be a startup failure in the plugin that serves every
+   * request.
+   */
+  #restore() {
+    let parsed
+    try {
+      parsed = JSON.parse(readFileSync(this.#file, 'utf8'))
+    } catch {
+      return
+    }
+    const rows = Array.isArray(parsed?.entries) ? parsed.entries : []
+    const restored = []
+    for (const row of rows) {
+      if (row === null || typeof row !== 'object') continue
+      if (!Array.isArray(row.attempts)) row.attempts = []
+      restored.push(row)
+    }
+    restored.sort((left, right) => Number(right.id) - Number(left.id))
+    this.#entries = restored.slice(0, this.#limit)
+    // Keep ids increasing across a restart, so a stored selection or a client
+    // holding `newestId` cannot collide with a fresh row.
+    const highest = this.#entries.reduce((max, row) => Math.max(max, Number(row.id) || 0), 0)
+    this.#sequence = Math.max(highest, Number(parsed?.sequence) || 0)
+  }
+
+  /**
+   * Rewrite the file from the current entries.
+   *
+   * Write-then-rename, like the settings store: a reader either sees the previous
+   * generation or the new one, never half of either.
+   */
+  #persist() {
+    if (this.#file === undefined) return
+    try {
+      mkdirSync(dirname(this.#file), { recursive: true })
+      const body = `${JSON.stringify({ sequence: this.#sequence, entries: this.#entries })}\n`
+      const temporary = `${this.#file}.${process.pid}.tmp`
+      try {
+        writeFileSync(temporary, body, 'utf8')
+        renameSync(temporary, this.#file)
+      } catch (cause) {
+        try {
+          unlinkSync(temporary)
+        } catch {
+          // The temporary may not exist; the original failure is what matters.
+        }
+        throw cause
+      }
+    } catch (cause) {
+      // Losing history is never worth failing a request over.
+      this.#log(`model-router: request log could not be written (${String(cause)})`)
+    }
   }
 
   /**
@@ -64,8 +138,13 @@ export class RequestLog {
    * @returns {number} the applied limit.
    */
   setLimit(value) {
-    this.#limit = clampLogLimit(value)
-    if (this.#entries.length > this.#limit) this.#entries.length = this.#limit
+    const next = clampLogLimit(value)
+    if (next === this.#limit) return this.#limit
+    this.#limit = next
+    if (this.#entries.length > this.#limit) {
+      this.#entries.length = this.#limit
+      this.#persist()
+    }
     return this.#limit
   }
 
@@ -112,6 +191,7 @@ export class RequestLog {
         Object.assign(draft, patch, { durationMs: Date.now() - startedAt })
         this.#entries.unshift(draft)
         if (this.#entries.length > this.#limit) this.#entries.length = this.#limit
+        this.#persist()
       },
     }
   }
@@ -138,6 +218,7 @@ export class RequestLog {
   /** Drop every entry. The id counter keeps advancing so a `since` poll stays correct. */
   clear() {
     this.#entries.length = 0
+    this.#persist()
   }
 }
 

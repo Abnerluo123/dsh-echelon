@@ -199,11 +199,18 @@ test('timeout conversion round-trips and clamps', async () => {
   const { fromSeconds, toSeconds } = loadBundle().__test
   assert.equal(toSeconds(90_000), 90)
   assert.equal(toSeconds(0), 0)
-  assert.equal(fromSeconds(90), 90_000)
+  assert.equal(toSeconds(60_000), 60)
+  // 90s is outside the range the Host accepts, so it clamps to the ceiling.
+  assert.equal(fromSeconds(90), 60_000)
   assert.equal(fromSeconds(0), 0)
   assert.equal(fromSeconds(-5), 0)
-  assert.equal(fromSeconds(1), 5_000, 'a sub-5s timeout would fail every lane')
-  assert.equal(fromSeconds(10_000), 900_000)
+  // The bundle cannot import the Host, so these bounds are duplicated in both
+  // places. They must agree, or the panel rewrites a value the Host accepts.
+  const { MIN_IDLE_TIMEOUT_MS, MAX_IDLE_TIMEOUT_MS } = await import('../src/config.js')
+  assert.equal(fromSeconds(1), MIN_IDLE_TIMEOUT_MS, 'below the floor clamps up')
+  assert.equal(fromSeconds(10_000), MAX_IDLE_TIMEOUT_MS, 'above the ceiling clamps down')
+  assert.equal(fromSeconds(MIN_IDLE_TIMEOUT_MS / 1000), MIN_IDLE_TIMEOUT_MS, 'the floor survives')
+  assert.equal(MIN_IDLE_TIMEOUT_MS, 3_000, 'the shortest timeout is three seconds')
   assert.equal(fromSeconds(undefined), 0)
 })
 

@@ -64,12 +64,12 @@ Requires **DSH ≥ 0.2.0-rc.1** and **Node ≥ 22.14.0**. **Restart `dsh`** afte
 ## Advanced
 
 - **Per-member controls**: retries, timeout, reasoning effort, context window, max output, vision (force it for a model that supports images but does not declare them).
-- **Timeout measures progress, not traffic**: a lane that only sends keepalives, empty deltas or usage rows is still dead and still fails over; reasoning counts as progress. 2–60s, default 6s on a fresh install, switchable off. DSH retries a failed turn itself, and a retry usually beats waiting.
+- **Timeout measures progress, not traffic**: a lane that only sends keepalives, empty deltas or usage rows is still dead and still fails over; reasoning counts as progress. 3–60s, default 6s on a fresh install, switchable off. DSH retries a failed turn itself, and a retry usually beats waiting.
 - **Tier defaults**: one timeout and retry count for the whole chain, used by members that do not set their own.
 - **Default level for new chats**: follow the model, or pin one of the five levels.
 - **Reasoning mapping switch**: on means one five-level vocabulary in the picker, translated onto each member at dispatch (nearest published level, or the model's default when it publishes none); off shows each model's own levels and forwards them as written. The per-member control in the editor always offers only that model's own levels — it pins one member, so it must not name a level that member cannot honour.
 - **Image routing**: pick a member that can see; only the current turn's image counts (an older image stops affecting selection).
-- **Request log**: each turn shows **tier → real model**, how the level was translated (`xhigh → max`, or not sent at all), every member tried, why each was skipped, duration and tokens. In memory, switchable off.
+- **Request log**: each turn shows **tier → real model**, how the level was translated (`xhigh → max`, or not sent at all), every member tried, why each was skipped, duration and tokens. Written to disk, so a restart does not erase it; 128 turns kept by default, switchable off.
 - **Context shorthand**: `1m`, `256k`, `128k` or plain digits — no counting zeros. `k`=1000, `m`=1000000 (decimal, so what the field shows is what it means).
 - **Saves apply immediately**: no restart, no page reload. One button top-right: save-and-reload when there are edits, plain reload when there are none.
 - **Settings file**: `$DSH_HOME/model-router/settings.json`, hand-editable (and `"128k"` is accepted there too); writes go through a temp file and a rename.
@@ -140,7 +140,7 @@ Replace `desktop` with your profile name (`dsh profile list`).
 ## Known limitations
 
 - **Hiding wraps `llm.listModels`**: DSH has no catalog-filter hook, so code that reads an adapter directly is not filtered.
-- **The request log is memory only**: cleared on restart; a debugging view, not an audit trail.
+- **The request log keeps a bounded history**: 128 turns by default, written to disk so a restart does not clear it. It is a debugging view, not an audit trail; the oldest turns are dropped past the limit.
 - **An undeclared vision capability is unknown**: still a candidate for image requests, but never preferred.
 - **`ABORTED` and `CONTEXT_WINDOW_EXCEEDED` never fail over**: you cancelled the first; the second would not fit elsewhere either.
 - **The internal route id remains `model-router`**: the rebrand did not change it, so saved sessions and settings keep working.
@@ -148,7 +148,7 @@ Replace `desktop` with your profile name (`dsh profile list`).
 ## Development
 
 ```sh
-node --test test/               # 215 tests, no network needed
+node --test test/               # 219 tests, no network needed
 node scripts/verify-profile.mjs # can the current profile load this plugin?
 ```
 

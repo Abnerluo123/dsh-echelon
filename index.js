@@ -25,8 +25,12 @@ import { ROUTER_PROVIDER, exposureHidesStock } from './src/config.js'
 import { API_PREFIX, createHandler } from './src/http.js'
 import { RequestLog } from './src/log.js'
 import { SettingsStore } from './src/store.js'
+import { dirname, join } from 'node:path'
 
 export const name = 'model-router'
+
+/** File holding the persisted request log, next to `settings.json`. */
+export const LOG_FILE = 'request-log.json'
 
 /**
  * `llm` is the only hard requirement. `webServer` and `connection` are read
@@ -41,9 +45,13 @@ export const inject = ['llm']
 export function apply(ctx) {
   const logger = ctx.logger ?? {}
   const store = new SettingsStore(undefined, { log: message => logger.warn?.(message) })
-  // One log per plugin generation, shared by the adapter that writes it and the
-  // settings API that reads it.
-  const log = new RequestLog({ limit: store.read().settings.logLimit })
+  // The log lives beside the settings file, so it survives a restart. Evidence of a
+  // bad turn is most useful right after the process that produced it has exited.
+  const log = new RequestLog({
+    limit: store.read().settings.logLimit,
+    file: join(dirname(store.file), LOG_FILE),
+    log: message => logger.warn?.(message),
+  })
   const adapter = new RouterAdapter({ store, logger, log })
 
   // Adopting the live `llm` service is what lets `resolveModel`/`probe` reach

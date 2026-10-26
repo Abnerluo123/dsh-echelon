@@ -38,7 +38,7 @@ window.__ModuleLoader__.load({
         loading: '正在读取…',
         loadFailed: '无法连接插件后端',
         retry: '重试',
-        saveAndReload: '保存并重新加载',
+        save: '保存',
         reload: '重新加载',
         saving: '正在保存…',
         saved: '已保存。',
@@ -130,7 +130,6 @@ window.__ModuleLoader__.load({
         'options.effortMapping': '思考强度自动映射',
         'options.effortMappingHint': '开启：选择器统一五档，按成员翻译。关闭：显示模型自己的档位并原样转发。',
         'options.logging': '记录调用日志',
-        'options.loggingHint': '只在内存里，重启即清空。',
         'options.logLimit': '保留条数',
 
         'tabs.configure': '配置',
@@ -139,7 +138,6 @@ window.__ModuleLoader__.load({
         'tabs.log': '调用日志',
 
         'log.title': '调用日志',
-        'log.hint': '挡位 → 真实模型、试过谁、档位怎么翻译的。只在内存里。',
         'log.refresh': '刷新',
         'log.clear': '清空',
         'log.empty': '还没有记录。发一条消息后再回来看看。',
@@ -165,8 +163,6 @@ window.__ModuleLoader__.load({
         'log.effortSame': '档位 {level}',
         'log.effortMapped': '档位 {from} → {to}',
 
-        'preview.title': '预览：模型选择器会显示',
-        'preview.stock': '其它模型',
         'preview.hiddenAll': '（其余模型已全部隐藏）',
         'preview.tiers': 'Echelon',
 
@@ -178,7 +174,7 @@ window.__ModuleLoader__.load({
         loading: 'Loading…',
         loadFailed: 'Cannot reach the plugin backend',
         retry: 'Retry',
-        saveAndReload: 'Save and reload',
+        save: 'Save',
         reload: 'Reload',
         saving: 'Saving…',
         saved: 'Saved.',
@@ -270,7 +266,6 @@ window.__ModuleLoader__.load({
         'options.effortMapping': 'Map reasoning levels automatically',
         'options.effortMappingHint': 'On: one five-level vocabulary, translated per member. Off: the model\'s own levels, forwarded as written.',
         'options.logging': 'Record a request log',
-        'options.loggingHint': 'In memory only; cleared by a restart.',
         'options.logLimit': 'Entries kept',
 
         'tabs.configure': 'Configure',
@@ -279,7 +274,6 @@ window.__ModuleLoader__.load({
         'tabs.log': 'Request log',
 
         'log.title': 'Request log',
-        'log.hint': 'Tier → real model, every member tried, how the level was translated. In memory only.',
         'log.refresh': 'Refresh',
         'log.clear': 'Clear',
         'log.empty': 'Nothing yet. Send a message, then come back.',
@@ -305,8 +299,6 @@ window.__ModuleLoader__.load({
         'log.effortSame': 'level {level}',
         'log.effortMapped': 'level {from} → {to}',
 
-        'preview.title': 'Preview: the picker will show',
-        'preview.stock': 'Other models',
         'preview.hiddenAll': '(every other model is hidden)',
         'preview.tiers': 'Model Router',
 
@@ -349,7 +341,10 @@ window.__ModuleLoader__.load({
 .mr-root p{margin:0;font-size:13px;line-height:21px;color:var(--dsw-alias-label-secondary)}
 .mr-root small{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
 .mr-head{display:flex;flex-direction:column;gap:8px}
-.mr-card{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:14px}
+/* The title row owns its breathing room: a heading sitting 2px above a tab strip
+   reads as cramped, and the gap is the cheapest way to make the page composed. */
+.mr-page-head{padding:2px 0 4px}
+.mr-card{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:16px}
 .mr-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .mr-spread{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .mr-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -387,8 +382,8 @@ window.__ModuleLoader__.load({
 .mr-member-id{display:flex;flex-direction:column;gap:2px;min-width:0}
 .mr-member-id code{font-family:var(--dsw-font-markdown-code-font-family,ui-monospace,monospace);font-size:12px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mr-member-name{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mr-member-knobs{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
-.mr-field{display:flex;flex-direction:column;gap:3px;min-width:0}
+.mr-member-knobs{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px 12px}
+.mr-field{display:flex;flex-direction:column;gap:5px;min-width:0}
 .mr-field > span{font-size:12px;line-height:16px;color:var(--dsw-alias-label-secondary)}
 .mr-field .mr-input-row{display:flex;align-items:center;gap:6px}
 .mr-field .mr-input-row input{width:100%}
@@ -426,12 +421,18 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 .mr-option-id{font-family:var(--dsw-font-markdown-code-font-family,ui-monospace,monospace);font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mr-alert{border-radius:8px;padding:9px 11px;font-size:12px;line-height:18px;background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary);overflow-wrap:anywhere}
 .mr-note{border-radius:8px;padding:9px 11px;font-size:12px;line-height:18px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary)}
-.mr-preview{display:flex;flex-direction:column;gap:4px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:10px 12px;background:var(--dsw-alias-bg-layer-2);max-height:260px;overflow:auto}
-.mr-preview-group{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--dsw-alias-label-tertiary);padding:6px 0 2px}
-.mr-preview-row{display:flex;align-items:center;gap:6px;font-size:13px;padding:2px 0}
+/* The preview is the whole tab, so it claims the height instead of collapsing to
+   the length of the list and leaving a large empty card underneath it. */
+.mr-preview{display:flex;flex-direction:column;gap:6px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:12px 14px;background:var(--dsw-alias-bg-layer-2);overflow:auto;min-height:min(58vh,520px)}
+.mr-preview-card{gap:0}
+.mr-preview-block{display:flex;flex-direction:column;gap:4px;padding-top:6px}
+.mr-preview-group{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--dsw-alias-label-tertiary);padding:8px 0 2px}
+.mr-preview-row{display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0}
 .mr-preview-row .mr-check{color:var(--dsw-alias-label-primary);flex:none;width:14px}
 .mr-preview-row.is-hidden{opacity:.35;text-decoration:line-through}
-.mr-tabs{display:flex;gap:4px;border-bottom:1px solid var(--dsw-alias-border-l2);padding-bottom:2px}
+.mr-preview-note{font-size:13px;line-height:21px;color:var(--dsw-alias-label-secondary);padding:6px 0}
+/* More air under the tab strip: the rule was touching the card below it. */
+.mr-tabs{display:flex;gap:4px;border-bottom:1px solid var(--dsw-alias-border-l2);padding-bottom:2px;margin-bottom:6px}
 /* Collapsible detail block. One compact row that still describes itself: a
    bare chevron left a wide empty strip that said nothing about what it would
    open. The label stays visible; the inputs stay hidden until asked for. */
@@ -651,10 +652,20 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 
     /** Seconds for display; the document stores milliseconds. */
     const toSeconds = ms => (Number(ms) === 0 ? 0 : Math.round(Number(ms) / 1000))
+    /**
+     * Milliseconds for storage, clamped to the range the Host accepts.
+     *
+     * These two numbers are duplicated from `src/config.js` because the bundle
+     * cannot import the Host. They had drifted (5–900 here, 2–60 there), so the
+     * panel silently rewrote a value the Host would have accepted — the "shortest
+     * timeout is 3" change appeared to do nothing because this clamp still said 5.
+     */
+    const MIN_TIMEOUT_SEC = 3
+    const MAX_TIMEOUT_SEC = 60
     const fromSeconds = seconds => {
       const value = Math.round(Number(seconds))
       if (!Number.isFinite(value) || value <= 0) return 0
-      return Math.min(Math.max(value, 5), 900) * 1000
+      return Math.min(Math.max(value, MIN_TIMEOUT_SEC), MAX_TIMEOUT_SEC) * 1000
     }
 
     // ── controls ────────────────────────────────────────────────────────────
@@ -970,7 +981,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
           h(Field, { label: t('member.timeout') },
             h(NumberInput, {
               value: member.idleTimeoutMs === undefined ? undefined : toSeconds(member.idleTimeoutMs),
-              min: 0, max: toSeconds(60_000), unit: t('member.timeoutUnit'),
+              min: 0, max: MAX_TIMEOUT_SEC, unit: t('member.timeoutUnit'),
               ariaLabel: t('member.timeout'), placeholder: t('tiers.inherit'),
               onChange: seconds => onChange(seconds === undefined
                 ? without('idleTimeoutMs')
@@ -1079,7 +1090,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
                 // where `0` genuinely means "no limit".
                 value: tier.idleTimeoutMs === undefined ? undefined : toSeconds(tier.idleTimeoutMs),
                 ariaLabel: `${tier.name} ${t('member.timeout')}`,
-                min: 0, max: toSeconds(60_000), unit: t('member.timeoutUnit'),
+                min: 0, max: MAX_TIMEOUT_SEC, unit: t('member.timeoutUnit'),
                 placeholder: t('tiers.useGlobal'),
                 onChange: seconds => {
                   const { idleTimeoutMs: _drop, ...rest } = tier
@@ -1281,9 +1292,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 
       return h('section', { className: 'mr-card' },
         h('div', { className: 'mr-spread' },
-          h('div', { className: 'mr-head', style: { gap: '4px' } },
-            h('h3', null, t('log.title')),
-            h('p', null, t('log.hint'))),
+          h('h3', null, t('log.title')),
           h('div', { className: 'mr-actions' },
             h('span', { className: 'mr-pill' }, view === undefined ? '' : t('log.count', { n: view.total })),
             h('button', { type: 'button', onClick: () => { void load() } }, t('log.refresh')),
@@ -1406,6 +1415,15 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
         setProbe({})
       }, [])
 
+      /**
+       * Refresh one tier's member verdicts.
+       *
+       * There is no "probe" button any more: the check ran once, on demand, and
+       * then went stale the moment a member changed. It now runs automatically
+       * after a member is added or edited, which is the only moment the answer is
+       * actionable — the tile shows whether the lane resolves, and whether it can
+       * see images, without asking the user to press anything.
+       */
       const runProbe = useCallback(async tierId => {
         try {
           const result = await api('/probe', { method: 'POST', body: JSON.stringify({ tier: tierId }) })
@@ -1413,8 +1431,9 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
             ...current,
             ...Object.fromEntries(result.members.map(member => [`${member.provider}/${member.model}`, member])),
           }))
-        } catch (cause) {
-          setError(String(cause.message ?? cause))
+        } catch {
+          // A failed probe only leaves the verdicts unknown; it must not replace
+          // the panel with an error the user cannot act on.
         }
       }, [])
 
@@ -1440,14 +1459,19 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
         // Title and the save control share one row: the button belongs where a
         // reader looks for it, not below a long form. `intro` was deleted — a
         // paragraph describing what the page obviously does is noise.
-        h('div', { className: 'mr-spread' },
+        //
+        // The button always says "Save". It does reload afterwards, but a label
+        // that switches between "save" and "reload" made a single action look like
+        // two states to keep track of, and the reload is not something the user
+        // asked for — it is just how the page stays truthful.
+        h('div', { className: 'mr-spread mr-page-head' },
           h('h2', null, t('title')),
           h('div', { className: 'mr-actions' },
             dirtyRef.current ? h('small', { className: 'mr-dirty' }, t('unsaved')) : null,
             h('button', {
               type: 'button', className: 'mr-primary', disabled: saving,
               onClick: () => { void save() },
-            }, saving ? t('saving') : dirtyRef.current ? t('saveAndReload') : t('reload')))),
+            }, saving ? t('saving') : t('save')))),
 
         // Three tabs, because these are three different questions asked at
         // different times: what does my picker look like (配置), how should the
@@ -1499,14 +1523,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
                 setDraft(current => ({ ...current, tiers: current.tiers.filter(candidate => candidate.id !== tier.id) }))
               },
               onAddMember: () => setPicker(tier.id),
-            })),
-          settings.tiers.length > 0
-            ? h('div', { className: 'mr-actions' },
-              h('button', {
-                type: 'button',
-                onClick: () => { for (const tier of settings.tiers) void runProbe(tier.id) },
-              }, t('member.probe')))
-            : null),
+            }))),
 
         // ── exposure ──
         !shown('settings') ? null : h('section', { className: 'mr-card' },
@@ -1570,7 +1587,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
           h('div', { className: 'mr-member-knobs' },
             h(Field, { label: t('options.timeout') },
               h(NumberInput, {
-                value: toSeconds(settings.defaultIdleTimeoutMs), min: 0, max: toSeconds(60_000), unit: t('units.sec'),
+                value: toSeconds(settings.defaultIdleTimeoutMs), min: 0, max: MAX_TIMEOUT_SEC, unit: t('units.sec'),
                 ariaLabel: t('options.timeout'),
                 onChange: seconds => setDraft(current => ({ ...current, defaultIdleTimeoutMs: seconds === undefined ? 6_000 : fromSeconds(seconds) })),
               })),
@@ -1616,13 +1633,12 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
             },
             h('option', { value: '' }, t('options.defaultEffortModel')),
             EFFORT_LADDER.map(id => h('option', { key: id, value: id }, id)))),
-          h('label', { className: 'mr-row', title: t('options.loggingHint') },
+          h('label', { className: 'mr-row' },
             h('input', {
               type: 'checkbox', checked: settings.logRequests !== false,
               onChange: event => setDraft(current => ({ ...current, logRequests: event.target.checked })),
             }),
-            h('span', { style: { fontSize: '13px' } }, t('options.logging')),
-            h('small', null, t('options.loggingHint'))),
+            h('span', { style: { fontSize: '13px' } }, t('options.logging'))),
           h('div', { className: 'mr-field' },
             h('span', null, t('options.file')),
             h('div', { className: 'mr-row' },
@@ -1642,30 +1658,34 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
               }, copied ? t('options.copied') : t('options.copy'))))),
 
         // ── preview ──
-        !shown('preview') ? null : h('section', { className: 'mr-card' },
-          h('h3', null, t('preview.title')),
+        // No heading: the tab is called 预览 and the only thing in it is the
+        // preview, so a title saying "preview: what the picker shows" was a
+        // heading restating its own container.
+        //
+        // Every provider keeps its own group. An earlier version flattened the
+        // stock models into one "other models" bucket, which both lied about the
+        // grouping the real picker uses and made the list unreadable.
+        !shown('preview') ? null : h('section', { className: 'mr-card mr-preview-card' },
           h('div', { className: 'mr-preview' },
             h('div', { className: 'mr-preview-group' }, t('preview.tiers')),
             settings.tiers.filter(tier => tier.enabled !== false).map(tier => h('div', { key: tier.id, className: 'mr-preview-row' },
               h('span', { className: 'mr-check' }, ''),
               h('span', null, tier.name),
               h('small', null, `· ${tier.members.filter(member => member.enabled !== false).length}`))),
-            exposure === 'all'
-              ? catalog.map(group => h(Fragment, { key: group.id },
-                h('div', { className: 'mr-preview-group' }, group.name ?? group.id),
-                group.models.map(model => h('div', { key: model.id, className: 'mr-preview-row' },
-                  h('span', { className: 'mr-check' }, ''),
-                  h('span', null, model.name ?? model.id)))))
-              : h(Fragment, null,
-                h('div', { className: 'mr-preview-group' }, t('preview.stock')),
-                exposure === 'tiers'
-                  ? h('p', { style: { padding: '4px 0' } }, t('preview.hiddenAll'))
-                  : catalog.map(group => group.models
-                    .filter(model => !(settings.hide ?? []).some(rule => rule.enabled
-                      && (rule.target === group.id || rule.target === `${group.id}/${model.id}`)))
-                    .map(model => h('div', { key: `${group.id}/${model.id}`, className: 'mr-preview-row' },
-                      h('span', { className: 'mr-check' }, ''),
-                      h('span', null, model.name ?? model.id))))))),
+            exposure === 'tiers'
+              ? h('p', { className: 'mr-preview-note' }, t('preview.hiddenAll'))
+              : catalog.map(group => {
+                // The same predicate the picker uses, so what is shown here is
+                // what the menu will actually contain.
+                const models = group.models.filter(model => !(settings.hide ?? []).some(rule => rule.enabled
+                  && (rule.target === group.id || rule.target === `${group.id}/${model.id}`)))
+                if (models.length === 0) return null
+                return h('div', { key: group.id, className: 'mr-preview-block' },
+                  h('div', { className: 'mr-preview-group' }, group.name ?? group.id),
+                  models.map(model => h('div', { key: model.id, className: 'mr-preview-row' },
+                    h('span', { className: 'mr-check' }, ''),
+                    h('span', null, model.name ?? model.id))))
+              }))),
 
         picker === undefined ? null : h(ModelPicker, {
           catalog: catalog.filter(group => group.id !== ROUTER_PROVIDER),
@@ -1689,6 +1709,10 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
             }))
             setPicker(undefined)
             setProbe({})
+            // Discover the new member's capabilities straight away: the tile shows
+            // whether it resolves and whether it can see images, and a stale
+            // "unknown" there is indistinguishable from a broken route.
+            void runProbe(picker)
           },
           onClose: () => setPicker(undefined),
         }))
