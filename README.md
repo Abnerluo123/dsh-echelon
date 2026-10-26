@@ -2,7 +2,7 @@
 
 > 把模型选择器换成一小组你自己命名的**挡位**。每个挡位背后是一条有序的真实模型链：按你排的顺序调用，失败重试，不行就换下一个。
 
-[![version](https://img.shields.io/badge/version-1.2.1-blue)](https://github.com/Abnerluo123/dsh-model-router/releases)
+[![version](https://img.shields.io/badge/version-1.2.2-blue)](https://github.com/Abnerluo123/dsh-model-router/releases)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 DeepSeek Harness 插件 · [English](README.en.md)
@@ -56,7 +56,7 @@ DeepSeek Harness 的模型选择器会列出**每一个**能用的模型。接�
 ### 安装
 
 ```sh
-dsh plugin --profile desktop add Abnerluo123/dsh-model-router
+dsh plugin --profile desktop add github:Abnerluo123/dsh-model-router
 ```
 
 需要 **DSH ≥ 0.2.0-rc.1**、**Node ≥ 22.14.0**。装完**重启 `dsh`**（热重载不够），刷新页面，设置里出现 **模型路由**。
@@ -130,9 +130,10 @@ dsh plugin --profile desktop add Abnerluo123/dsh-model-router
 
 | 方式 | 命令 / 位置 |
 |---|---|
-| **GitHub**（推荐） | `dsh plugin --profile desktop add Abnerluo123/dsh-model-router` |
-| 指定版本 | `dsh plugin --profile desktop add Abnerluo123/dsh-model-router#v1.2.1` |
-| 插件市场 | 插件 → 插件市场，搜索 `dsh-model-router`（需已发布到 npm） |
+| **GitHub（推荐，现在就能用）** | `dsh plugin --profile desktop add github:Abnerluo123/dsh-model-router` |
+| npm 包名（发布到 npm 后可用） | `dsh plugin --profile desktop add @abnerluo123/dsh-model-router` |
+| 指定版本 | 在任一来源后加 `#v1.2.2` |
+| 插件市场 | 插件 → 插件市场，搜索 `dsh-model-router`（走 npm 包） |
 | 本地源码 | `git clone` 后 `dsh plugin --profile desktop add /绝对路径` |
 
 `desktop` 换成你的 profile 名（`dsh profile list` 可列出）。

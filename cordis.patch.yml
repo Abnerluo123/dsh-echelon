@@ -8,5 +8,5 @@
 # guarantees. It never rewrites another plugin's routes.
 - insert:
     - id: model-router
-      name: 'dsh-model-router'
+      name: '@abnerluo123/dsh-model-router'
       config: {}

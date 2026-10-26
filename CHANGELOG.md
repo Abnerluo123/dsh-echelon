@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.2.2
+
+### 包名改为作用域形式
+
+`npm` 上 `dsh-model-router` 这个名字**已被他人占用**（`thedeveloper256`，0.7.1，同样是 DSH 的模型路由插件），直接发布会 403，插件市场里那个名字也指向他的包。
+
+因此改用与 GitHub 账号一致的作用域名：
+
+    @abnerluo123/dsh-model-router
+
+同步修改：
+
+- `package.json` 的 `name`，并加 `publishConfig.access = "public"`（作用域包默认私有，不加会发布失败）；
+- `cordis.patch.yml` 里 bundle 行的 `name` —— 它必须等于包名，否则插件加载不到；
+- `client.js` 里 `__ModuleLoader__` 注册的 `id` —— 同样必须等于包名；
+- README 的安装命令，并区分「GitHub 源码」与「npm 包名」两种来源；
+- `scripts/verify-profile.mjs` 改为从 `package.json` 读取名字，不再写死。
+
+安装命令：
+
+```sh
+dsh plugin --profile desktop add github:Abnerluo123/dsh-model-router   # 现在可用
+dsh plugin --profile desktop add @abnerluo123/dsh-model-router         # 发布到 npm 后
+```
+
+192 项测试。
+
+
 ## 1.2.1
 
 ### 去掉挡位名后面的 `auto` 角标

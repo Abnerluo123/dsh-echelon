@@ -17,7 +17,7 @@
  * writes that can fail halfway.
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-model-router',
+  id: '@abnerluo123/dsh-model-router',
   factory: require => {
     const module = { exports: {} }
     const exports = module.exports

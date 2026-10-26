@@ -37,7 +37,7 @@ function loadBundle() {
   } finally {
     globals.window = previousWindow
   }
-  assert.equal(registration?.id, 'dsh-model-router')
+  assert.equal(registration?.id, '@abnerluo123/dsh-model-router', 'the bundle id must match the package name')
   return registration.factory(require)
 }
 

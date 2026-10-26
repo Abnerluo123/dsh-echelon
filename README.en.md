@@ -2,7 +2,7 @@
 
 > Replace the model picker with a handful of **tiers** you name yourself. Each tier is an ordered chain of real models: call them in your order, retry on failure, move to the next one when it still won't answer.
 
-[![version](https://img.shields.io/badge/version-1.2.1-blue)](https://github.com/Abnerluo123/dsh-model-router/releases)
+[![version](https://img.shields.io/badge/version-1.2.2-blue)](https://github.com/Abnerluo123/dsh-model-router/releases)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 A DeepSeek Harness plugin · [中文](README.md)
@@ -56,7 +56,7 @@ No DSH patching. The plugin registers its own provider route and wraps one publi
 ### Install
 
 ```sh
-dsh plugin --profile desktop add Abnerluo123/dsh-model-router
+dsh plugin --profile desktop add github:Abnerluo123/dsh-model-router
 ```
 
 Requires **DSH ≥ 0.2.0-rc.1** and **Node ≥ 22.14.0**. **Restart `dsh`** afterwards (a hot reload is not enough), reload the page, and **Model Router** appears in settings.
@@ -130,9 +130,10 @@ The log lives **in memory only**, clears on restart, and can be switched off. Sk
 
 | Method | Command / location |
 |---|---|
-| **GitHub** (recommended) | `dsh plugin --profile desktop add Abnerluo123/dsh-model-router` |
-| Pin a version | `dsh plugin --profile desktop add Abnerluo123/dsh-model-router#v1.2.1` |
-| Plugin market | Plugins → Market, search `dsh-model-router` (needs an npm release) |
+| **GitHub** (recommended) | `dsh plugin --profile desktop add github:Abnerluo123/dsh-model-router` |
+| npm name (once published) | `dsh plugin --profile desktop add @abnerluo123/dsh-model-router` |
+| Pin a version | append `#v1.2.2` to either source |
+| Plugin market | Plugins → Market, search `dsh-model-router` (resolves the npm package) |
 | Local source | `git clone`, then `dsh plugin --profile desktop add /absolute/path` |
 
 Replace `desktop` with your profile name (`dsh profile list`).

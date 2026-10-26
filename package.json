@@ -1,6 +1,6 @@
 {
-  "name": "dsh-model-router",
-  "version": "1.2.1",
+  "name": "@abnerluo123/dsh-model-router",
+  "version": "1.2.2",
   "description": "Model router for DeepSeek Harness: expose only your own named tiers to the model picker and dispatch each request down an ordered chain of real models with per-model retries, timeouts, and failover. 模型路由器：只暴露自定义挡位，按预设顺序调用真实模型，失败重试后自动降级到下一个。",
   "license": "MIT",
   "type": "module",
@@ -71,5 +71,8 @@
   "homepage": "https://github.com/Abnerluo123/dsh-model-router#readme",
   "bugs": {
     "url": "https://github.com/Abnerluo123/dsh-model-router/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -3,12 +3,15 @@ node_modules/
 pnpm-lock.yaml
 package-lock.json
 
-# Local scratch: throwaway debug harnesses, screenshots, ad-hoc scripts
+# Local scratch: throwaway debug harnesses and ad-hoc verification scripts
 ego-verify/
 debug-*.mjs
-verify*.mjs
+/verify*.mjs
 *.log
 *.tmp
+
+# Developer tooling that ships with the repo
+!scripts/verify-profile.mjs
 
 # Editor and OS noise
 .DS_Store
