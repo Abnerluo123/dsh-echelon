@@ -402,3 +402,12 @@ test('a skipped member is labelled by its actual reason', async () => {
   assert.notEqual(DICT.zh['log.noVision'], DICT.zh['log.contextSkip'], 'the two reasons must read differently')
   assert.equal(DICT.zh['log.noVision'], '无视觉')
 })
+
+test('the tier header shows the name only, not its derived id', async () => {
+  // The id is derived from the name and only matters inside settings.json, so a
+  // badge repeating it next to the input was noise.
+  const { DICT, CSS } = loadBundle().__test
+  assert.equal(DICT.zh['tiers.id'], undefined, 'the unused label is gone')
+  assert.equal(DICT.en['tiers.id'], undefined)
+  assert.doesNotMatch(CSS, /\.mr-tier-name \.mr-pill/, 'no badge rules in the tier header')
+})

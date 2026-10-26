@@ -2,7 +2,7 @@
 
 > Replace the model picker with a handful of **tiers** you name yourself. Each tier is an ordered chain of real models: call them in your order, retry on failure, move to the next one when it still won't answer.
 
-[![version](https://img.shields.io/badge/version-1.2.0-blue)](https://github.com/Abnerluo123/dsh-model-router/releases)
+[![version](https://img.shields.io/badge/version-1.2.1-blue)](https://github.com/Abnerluo123/dsh-model-router/releases)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 A DeepSeek Harness plugin · [中文](README.md)
@@ -131,7 +131,7 @@ The log lives **in memory only**, clears on restart, and can be switched off. Sk
 | Method | Command / location |
 |---|---|
 | **GitHub** (recommended) | `dsh plugin --profile desktop add Abnerluo123/dsh-model-router` |
-| Pin a version | `dsh plugin --profile desktop add Abnerluo123/dsh-model-router#v1.2.0` |
+| Pin a version | `dsh plugin --profile desktop add Abnerluo123/dsh-model-router#v1.2.1` |
 | Plugin market | Plugins → Market, search `dsh-model-router` (needs an npm release) |
 | Local source | `git clone`, then `dsh plugin --profile desktop add /absolute/path` |
 

@@ -2,7 +2,7 @@
 
 > 把模型选择器换成一小组你自己命名的**挡位**。每个挡位背后是一条有序的真实模型链：按你排的顺序调用，失败重试，不行就换下一个。
 
-[![version](https://img.shields.io/badge/version-1.2.0-blue)](https://github.com/Abnerluo123/dsh-model-router/releases)
+[![version](https://img.shields.io/badge/version-1.2.1-blue)](https://github.com/Abnerluo123/dsh-model-router/releases)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 DeepSeek Harness 插件 · [English](README.en.md)
@@ -131,7 +131,7 @@ dsh plugin --profile desktop add Abnerluo123/dsh-model-router
 | 方式 | 命令 / 位置 |
 |---|---|
 | **GitHub**（推荐） | `dsh plugin --profile desktop add Abnerluo123/dsh-model-router` |
-| 指定版本 | `dsh plugin --profile desktop add Abnerluo123/dsh-model-router#v1.2.0` |
+| 指定版本 | `dsh plugin --profile desktop add Abnerluo123/dsh-model-router#v1.2.1` |
 | 插件市场 | 插件 → 插件市场，搜索 `dsh-model-router`（需已发布到 npm） |
 | 本地源码 | `git clone` 后 `dsh plugin --profile desktop add /绝对路径` |
 
