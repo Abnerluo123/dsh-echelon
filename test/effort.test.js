@@ -67,10 +67,29 @@ test('ties go to the stronger level', () => {
   assert.equal(mapEffort('middle', list('low', 'high')).effort, 'high')
 })
 
-test('off maps to the lowest level when the model cannot switch reasoning off', () => {
+test('off never crosses into the strength levels', () => {
+  // `off` is a switch, not the bottom rung. Mapping `off` onto `low` used to be
+  // described as "the cheapest available lane", but it is not off: the model
+  // keeps thinking. Dropping the request lets the member use its own default,
+  // which is the honest outcome and is reported as such.
   const result = mapEffort('off', list('low', 'medium', 'high'))
-  assert.equal(result.effort, 'low', 'the cheapest available lane is the closest thing to off')
+  assert.equal(result.effort, undefined)
+  assert.equal(result.reason, 'cannot-disable')
   assert.equal(mapEffort('off', list('off', 'high')).effort, 'off')
+  // `none` is an `off` spelling, so it lands exactly.
+  assert.equal(mapEffort('off', list('none', 'low', 'high')).effort, 'none')
+})
+
+test('a request for thinking never lands on off', () => {
+  // The reported bug: a gateway declaring a binary `off`/`on` toggle turned a
+  // request for `high` into `off`, because `off` was the only rankable
+  // neighbour. Asking for hard thinking and getting none is worse than sending
+  // nothing.
+  assert.equal(mapEffort('high', list('off', 'on')).effort, 'on', '`on` means thinking')
+  assert.equal(mapEffort('high', list('off', 'on')).reason, 'same-rank')
+  const stuck = mapEffort('high', list('off'))
+  assert.equal(stuck.effort, undefined, 'a member that only knows off cannot be asked for high')
+  assert.equal(stuck.reason, 'no-thinking-level')
 })
 
 test('unknown support drops the level instead of forwarding it', () => {
@@ -95,7 +114,7 @@ test('a foreign name is dropped when the member does not publish it', () => {
 })
 
 test('a member with only foreign names gets no level rather than an unsafe guess', () => {
-  assert.deepEqual(mapEffort('high', list('turbo', 'ludicrous')), { effort: undefined, mapped: true, reason: 'no-ladder-match' })
+  assert.deepEqual(mapEffort('high', list('turbo', 'ludicrous')), { effort: undefined, mapped: true, reason: 'no-thinking-level' })
 })
 
 test('every mapped level is one the member publishes', () => {

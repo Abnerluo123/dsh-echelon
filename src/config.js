@@ -51,17 +51,20 @@ export const DEFAULT_ATTEMPTS = 1
 /**
  * Default idle timeout per attempt, in milliseconds. `0` disables it.
  *
- * Three minutes, not ninety seconds. The watchdog now also fires on "traffic but
- * no progress", which makes it far more likely to trigger on a genuinely stuck
- * lane — so it needs enough headroom for a slow first token from a big model
- * behind a queue. Ninety seconds was short enough that a busy provider looked
- * dead.
+ * Six seconds, and the ceiling is sixty. DSH retries a failed turn itself, and a
+ * retry is more efficient than waiting: a lane that has produced nothing in six
+ * seconds is usually gone, while a lane that is merely slow will still answer on
+ * the next attempt. Waiting two minutes to reach the same conclusion only costs
+ * the user two minutes.
+ *
+ * The floor is two seconds because the panel allows it, not because it is a good
+ * idea for every member — a big model behind a queue needs more.
  */
-export const DEFAULT_IDLE_TIMEOUT_MS = 180_000
+export const DEFAULT_IDLE_TIMEOUT_MS = 6_000
 
-/** Accepted range for an idle timeout: 5s … 15min, or 0 for "wait forever". */
-export const MIN_IDLE_TIMEOUT_MS = 5_000
-export const MAX_IDLE_TIMEOUT_MS = 900_000
+/** Accepted range for an idle timeout: 2s … 60s, or 0 for "wait forever". */
+export const MIN_IDLE_TIMEOUT_MS = 2_000
+export const MAX_IDLE_TIMEOUT_MS = 60_000
 
 /**
  * Token budgets a member may declare: context window and output cap.
@@ -197,26 +200,28 @@ export const EFFORT_OFF = 'off'
  * Coerce one stored member.
  * Returns `undefined` when the row cannot name a real route: half a route is not
  * a fallback, it is a guaranteed failure at dispatch time.
+ *
+ * Timeout and retries are stored as `undefined` when the row does not say, so a
+ * tier default can fill them in later (see {@link tierChain}). Materialising the
+ * global default here instead — which is what this used to do — made the tier
+ * default unreachable: every member already had a number, so there was never a
+ * gap for it to fill.
  * @param {unknown} raw - a stored member row.
- * @returns {{provider: string, model: string, attempts: number, idleTimeoutMs: number, contextWindow?: number, maxTokens?: number, enabled: boolean, reasoningEffort?: string} | undefined}
+ * @returns {{provider: string, model: string, attempts?: number, idleTimeoutMs?: number, contextWindow?: number, maxTokens?: number, enabled: boolean, reasoningEffort?: string} | undefined}
  */
 export function normalizeMember(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
   const provider = typeof raw.provider === 'string' ? raw.provider.trim() : ''
-  const model = typeof raw.model === 'string' ? raw.model.trim() : ''
+  const model = typeof raw.model === 'string' && raw.model.trim() !== '' ? raw.model.trim() : ''
   if (provider === '' || model === '' || provider === ROUTER_PROVIDER) return undefined
-  const attempts = Number(raw.attempts)
-  const timeout = Number(raw.idleTimeoutMs)
   const reasoningEffort = typeof raw.reasoningEffort === 'string' && raw.reasoningEffort.trim() !== ''
     ? raw.reasoningEffort.trim()
     : undefined
   return {
     provider,
     model,
-    attempts: Number.isFinite(attempts) ? clamp(Math.trunc(attempts), 0, MAX_ATTEMPTS) : DEFAULT_ATTEMPTS,
-    idleTimeoutMs: Number.isFinite(timeout)
-      ? (timeout === 0 ? 0 : clamp(Math.trunc(timeout), MIN_IDLE_TIMEOUT_MS, MAX_IDLE_TIMEOUT_MS))
-      : DEFAULT_IDLE_TIMEOUT_MS,
+    ...memberAttempts(raw.attempts),
+    ...memberTimeout(raw.idleTimeoutMs),
     ...tokenBudget('contextWindow', raw.contextWindow),
     ...tokenBudget('maxTokens', raw.maxTokens),
     enabled: raw.enabled !== false,
@@ -229,6 +234,31 @@ export function normalizeMember(raw) {
     // have read.
     ...(typeof raw.seesImages === 'boolean' ? { seesImages: raw.seesImages } : {}),
   }
+}
+
+/**
+ * Read a member's retry count, keeping "unset" distinct from "zero".
+ * @param {unknown} raw - stored value.
+ * @returns {object} either `{}` or `{attempts}`.
+ */
+function memberAttempts(raw) {
+  if (raw === undefined || raw === null || raw === '') return {}
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) return {}
+  return { attempts: clamp(Math.trunc(parsed), 0, MAX_ATTEMPTS) }
+}
+
+/**
+ * Read a member's idle timeout, keeping "unset" distinct from `0` (no limit).
+ * @param {unknown} raw - stored value.
+ * @returns {object} either `{}` or `{idleTimeoutMs}`.
+ */
+function memberTimeout(raw) {
+  if (raw === undefined || raw === null || raw === '') return {}
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) return {}
+  if (parsed === 0) return { idleTimeoutMs: 0 }
+  return { idleTimeoutMs: clamp(Math.trunc(parsed), MIN_IDLE_TIMEOUT_MS, MAX_IDLE_TIMEOUT_MS) }
 }
 
 /**
@@ -305,10 +335,45 @@ export function normalizeTier(raw, index = 0) {
     ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
     ...tokenBudget('contextWindow', raw.contextWindow),
     ...tokenBudget('maxTokens', raw.maxTokens),
+    ...tierTimeout(raw.idleTimeoutMs),
+    ...tierAttempts(raw.attempts),
     ...(CONTEXT_STRATEGIES.includes(raw.contextStrategy) && raw.contextStrategy !== DEFAULT_CONTEXT_STRATEGY
       ? { contextStrategy: raw.contextStrategy }
       : {}),
   }
+}
+
+/**
+ * Coerce a tier-level idle timeout.
+ *
+ * `undefined` means "no tier default": every member then keeps its own value, and
+ * a member that does not set one follows the global default. `0` is also stored
+ * as undefined rather than as "no limit" — at the tier level, `0` is the panel's
+ * way of saying "use whatever the tier default says", so a tier cannot express
+ * "wait forever" on behalf of its members. Only a member can do that, which
+ * keeps one obvious place to disable the watchdog.
+ * @param {unknown} raw - stored value.
+ * @returns {object} either `{}` or `{idleTimeoutMs}`.
+ */
+function tierTimeout(raw) {
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed <= 0) return {}
+  return { idleTimeoutMs: clamp(Math.trunc(parsed), MIN_IDLE_TIMEOUT_MS, MAX_IDLE_TIMEOUT_MS) }
+}
+
+/**
+ * Coerce a tier-level retry count.
+ *
+ * Same `0`-means-inherit rule as {@link tierTimeout}: the tier default is a
+ * default, so clearing it must fall back to the member's own value instead of
+ * silently turning retries off for the whole chain.
+ * @param {unknown} raw - stored value.
+ * @returns {object} either `{}` or `{attempts}`.
+ */
+function tierAttempts(raw) {
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed <= 0) return {}
+  return { attempts: clamp(Math.trunc(parsed), 0, MAX_ATTEMPTS) }
 }
 
 /**
@@ -477,11 +542,18 @@ export function tierChain(tier, available) {
       const reasoningEffort = member.reasoningEffort ?? tier.reasoningEffort
       const contextWindow = member.contextWindow ?? tier.contextWindow
       const maxTokens = member.maxTokens ?? tier.maxTokens
+      // Timeout and retries follow the same "member wins, tier fills the gap"
+      // shape as the budgets above. The distinction that matters: a member's own
+      // `0` is a real value ("no limit", "no retry") and must survive the merge,
+      // while a tier-level `0` was already normalized away into "no default", so
+      // `??` never confuses the two.
+      const idleTimeoutMs = member.idleTimeoutMs ?? tier.idleTimeoutMs
+      const attempts = member.attempts ?? tier.attempts
       return {
         provider: member.provider,
         model: member.model,
-        attempts: member.attempts,
-        idleTimeoutMs: member.idleTimeoutMs,
+        attempts,
+        idleTimeoutMs,
         ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
         ...(contextWindow === undefined ? {} : { contextWindow }),
         ...(maxTokens === undefined ? {} : { maxTokens }),

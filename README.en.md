@@ -64,7 +64,8 @@ Requires **DSH ≥ 0.2.0-rc.1** and **Node ≥ 22.14.0**. **Restart `dsh`** afte
 ## Advanced
 
 - **Per-member controls**: retries, timeout, reasoning effort, context window, max output, vision (force it for a model that supports images but does not declare them).
-- **Timeout measures progress, not traffic**: a lane that only sends keepalives, empty deltas or usage rows is still dead and still fails over; reasoning counts as progress. Default 180s, switchable off.
+- **Timeout measures progress, not traffic**: a lane that only sends keepalives, empty deltas or usage rows is still dead and still fails over; reasoning counts as progress. 2–60s, default 6s on a fresh install, switchable off. DSH retries a failed turn itself, and a retry usually beats waiting.
+- **Tier defaults**: one timeout and retry count for the whole chain, used by members that do not set their own.
 - **Default level for new chats**: follow the model, or pin one of the five levels.
 - **Reasoning mapping switch**: on means one five-level vocabulary in the picker, translated onto each member at dispatch (nearest published level, or the model's default when it publishes none); off shows each model's own levels and forwards them as written. The per-member control in the editor always offers only that model's own levels — it pins one member, so it must not name a level that member cannot honour.
 - **Selection strategy**: chain order (default) or most free space.
@@ -148,7 +149,7 @@ Replace `desktop` with your profile name (`dsh profile list`).
 ## Development
 
 ```sh
-node --test test/               # 211 tests, no network needed
+node --test test/               # 215 tests, no network needed
 node scripts/verify-profile.mjs # can the current profile load this plugin?
 ```
 

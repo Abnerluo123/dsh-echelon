@@ -28,6 +28,7 @@
 import { Adapter } from './base.js'
 import {
   AUTO_TIER_ID,
+  DEFAULT_ATTEMPTS,
   ROUTER_PROVIDER,
   isRetryable,
   orderByContext,
@@ -821,7 +822,11 @@ export class RouterAdapter extends Adapter {
     }
     for (const member of routed.ordered) {
       const label = `${member.provider}/${member.model}`
-      const attempts = Math.max(member.attempts, 0) + 1
+      // A member that sets neither inherits from the tier (already applied by
+      // `tierChain`) or, failing that, from the global defaults. Both are
+      // `undefined` here rather than pre-filled, so the precedence stays visible
+      // in one place.
+      const attempts = Math.max(member.attempts ?? DEFAULT_ATTEMPTS, 0) + 1
       const idleTimeoutMs = member.idleTimeoutMs ?? settings.defaultIdleTimeoutMs
       for (let attempt = 0; attempt < attempts; attempt += 1) {
         if (options.signal?.aborted === true) {

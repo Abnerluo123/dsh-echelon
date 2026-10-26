@@ -60,6 +60,10 @@ window.__ModuleLoader__.load({
         'tiers.removeConfirm': '删除挡位「{name}」？成员配置会一并删除。',
         'tiers.empty': '还没有挡位。新增一个，然后往里加模型。',
         'tiers.defaults': '挡位默认值',
+        'tiers.inherit': '跟随成员',
+        'tiers.useGlobal': '全局默认',
+        'tiers.timeoutHint': '成员没单独设置时用这个。',
+        'tiers.attemptsHint': '成员没单独设置时用这个。',
         'tiers.members': '成员（按顺序）',
         'tiers.membersEmpty': '还没有模型。选一个加进来。',
         'tiers.addMember': '添加模型',
@@ -68,22 +72,22 @@ window.__ModuleLoader__.load({
         'member.provider': '来源',
         'member.model': '模型',
         'member.attempts': '重试次数',
-        'member.attemptsHint': '失败后重试几次再换下一个。0 = 不重试。',
+        'member.attemptsHint': '0 = 不重试',
         'member.timeout': '超时',
-        'member.timeoutHint': '这么久没有进展就换下一个。0 = 不限制。',
+        'member.timeoutHint': '0 = 不限制',
         'member.timeoutUnit': '秒',
         'member.unlimited': '不限制',
         'member.effort': '思考强度',
         'member.effortDefault': '跟随会话',
         'member.effortOff': '关闭思考',
-        'member.effortHint': '只列该模型上报的档位。留空跟随会话。',
+        'member.effortHint': '',
         'member.effortStale': '模型没上报',
         'member.context': '上下文长度',
         'tiers.strategy': '选人策略',
         'tiers.strategyOrder': '按顺序（第一个装得下的）',
         'tiers.strategyRoomy': '优先剩余空间最大的',
-        'tiers.strategyHint': '按顺序更可预测；优先空间能少挤长对话。',
-        'member.contextHint': '留空用模型上报值，填了覆盖它。支持 128k / 1m。',
+        'tiers.strategyHint': '',
+        'member.contextHint': '支持 128k / 1m',
         'member.maxTokens': '最大输出',
         'member.defaultAuto': '模型默认',
         'member.enabled': '启用',
@@ -123,7 +127,7 @@ window.__ModuleLoader__.load({
 
         'options.title': '高级',
         'options.timeout': '默认超时',
-        'options.timeoutHint': '成员没有单独设置时使用。0 = 不限制。',
+        'options.timeoutHint': '成员和挡位都没设置时用这个。0 = 不限制。',
         'options.descriptions': '在模型选择器里显示挡位说明',
         'options.file': '配置文件',
         'options.copy': '复制路径',
@@ -208,6 +212,10 @@ window.__ModuleLoader__.load({
         'tiers.removeConfirm': 'Delete tier “{name}”? Its members go with it.',
         'tiers.empty': 'No tiers yet. Add one, then add models to it.',
         'tiers.defaults': 'Tier defaults',
+        'tiers.inherit': 'follow member',
+        'tiers.useGlobal': 'global default',
+        'tiers.timeoutHint': 'Used when a member does not set its own.',
+        'tiers.attemptsHint': 'Used when a member does not set its own.',
         'tiers.members': 'Members (in order)',
         'tiers.membersEmpty': 'No models yet. Pick one to add.',
         'tiers.addMember': 'Add model',
@@ -216,22 +224,22 @@ window.__ModuleLoader__.load({
         'member.provider': 'Route',
         'member.model': 'Model',
         'member.attempts': 'Retries',
-        'member.attemptsHint': 'Extra tries before failing over. 0 = none.',
+        'member.attemptsHint': '0 = none',
         'member.timeout': 'Timeout',
-        'member.timeoutHint': 'Fail over after this long without progress. 0 = no limit.',
+        'member.timeoutHint': '0 = no limit',
         'member.timeoutUnit': 's',
         'member.unlimited': 'no limit',
         'member.effort': 'Reasoning',
         'member.effortDefault': 'Follow session',
         'member.effortOff': 'No reasoning',
-        'member.effortHint': 'Only levels this model publishes. Empty follows the session.',
+        'member.effortHint': '',
         'member.effortStale': 'not published',
         'member.context': 'Context window',
         'tiers.strategy': 'Selection',
         'tiers.strategyOrder': 'Chain order (first that fits)',
         'tiers.strategyRoomy': 'Most free space first',
-        'tiers.strategyHint': 'Chain order is more predictable; headroom suits long sessions.',
-        'member.contextHint': 'Empty uses the model value; an override replaces it. Accepts 128k / 1m.',
+        'tiers.strategyHint': '',
+        'member.contextHint': 'Accepts 128k / 1m',
         'member.maxTokens': 'Max output',
         'member.defaultAuto': 'Model default',
         'member.enabled': 'Enabled',
@@ -244,7 +252,7 @@ window.__ModuleLoader__.load({
         'member.seesImagesAuto': 'Follow the model',
         'member.seesImagesYes': 'Force: sees images',
         'member.seesImagesNo': 'Force: cannot see',
-        'member.seesImagesHint': 'Choose "Force: sees images" when a model sees images without declaring it.',
+        'member.seesImagesHint': 'For a model that sees images without declaring it.',
         'member.probe': 'Test',
         'member.probeOk': 'available',
         'member.probeFail': 'unavailable',
@@ -259,20 +267,19 @@ window.__ModuleLoader__.load({
 
         'expose.title': 'What the model picker shows',
         'expose.tiers': 'Tiers only',
-        'expose.tiersHint': 'Hide every real model below and leave your tiers. Make sure a tier answers first.',
+        'expose.tiersHint': 'Hide every real model, keep your tiers.',
         'expose.custom': 'Hide only what I check',
-        'expose.customHint': 'Tiers and every unchecked model stay visible.',
+        'expose.customHint': 'Tiers and unchecked models stay visible.',
         'expose.all': 'Show everything',
-        'expose.allHint': 'Tiers sit beside the stock models. Default.',
-        'expose.blocked': 'No tier can dispatch yet, so nothing is hidden — otherwise the picker would be empty.',
+        'expose.allHint': 'Tiers beside the stock models. Default.',
+        'expose.blocked': 'No tier can dispatch yet, so nothing is hidden — the picker would be empty.',
         'expose.hiding': 'Hiding {hidden} of {total} models right now',
         'expose.hideAll': 'Check all',
         'expose.hideNone': 'Check none',
 
         'options.title': 'Advanced',
         'options.timeout': 'Default timeout',
-        'options.timeoutHint': 'Used when a member sets none. 0 = no limit.',
-        'options.descriptions': 'Show tier descriptions in the picker',
+        'options.timeoutHint': 'Used when neither the member nor the tier sets one. 0 = no limit.',        'options.descriptions': 'Show tier descriptions in the picker',
         'options.file': 'Settings file',
         'options.copy': 'Copy path',
         'options.copied': 'Copied',
@@ -645,7 +652,10 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
       return h('label', { className: 'mr-field' },
         h('span', null, label),
         children,
-        hint === undefined ? null : h('small', null, hint))
+        // An empty hint renders nothing at all. A `<small>` with no text still
+        // occupies a row and still sits in the accessibility tree, which is how a
+        // form ends up looking unevenly spaced for no visible reason.
+        hint === undefined || hint === '' ? null : h('small', null, hint))
     }
 
     /**
@@ -914,16 +924,25 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
           ].join(' · '),
         },
         h('div', { className: 'mr-member-knobs' },
+          // An empty box means "inherit from the tier, then the global default".
+          // Explicit `0` is still honoured where it means something, so clearing
+          // the field is distinct from typing zero.
           h(Field, { label: t('member.attempts'), hint: t('member.attemptsHint') },
             h(NumberInput, {
               value: member.attempts, min: 0, max: 5, ariaLabel: t('member.attempts'),
-              onChange: attempts => onChange({ ...member, attempts: attempts === undefined ? 1 : Math.min(Math.max(attempts, 0), 5) }),
+              placeholder: t('tiers.inherit'),
+              onChange: attempts => onChange(attempts === undefined
+                ? without('attempts')
+                : { ...member, attempts: Math.min(Math.max(attempts, 0), 5) }),
             })),
           h(Field, { label: t('member.timeout'), hint: t('member.timeoutHint') },
             h(NumberInput, {
-              value: toSeconds(member.idleTimeoutMs), min: 0, max: 900, unit: t('member.timeoutUnit'),
-              ariaLabel: t('member.timeout'),
-              onChange: seconds => onChange({ ...member, idleTimeoutMs: seconds === undefined ? 90_000 : fromSeconds(seconds) }),
+              value: member.idleTimeoutMs === undefined ? undefined : toSeconds(member.idleTimeoutMs),
+              min: 0, max: toSeconds(60_000), unit: t('member.timeoutUnit'),
+              ariaLabel: t('member.timeout'), placeholder: t('tiers.inherit'),
+              onChange: seconds => onChange(seconds === undefined
+                ? without('idleTimeoutMs')
+                : { ...member, idleTimeoutMs: fromSeconds(seconds) }),
             })),
           h(Field, { label: t('member.effort'), hint: t('member.effortHint') },
             h('select', {
@@ -994,18 +1013,44 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
             h('button', { type: 'button', className: 'mr-icon mr-danger', title: t('tiers.remove'), 'aria-label': t('tiers.remove'), onClick: onRemove }, '✕'))),
         h('div', { className: 'mr-row' }, h('h3', { style: { fontSize: '13px' } }, t('tiers.members')),
           h('span', { className: 'mr-pill' }, String(tier.members.length))),
-        // Tier-level defaults. A member that sets its own value wins, so these
-        // are the "apply to the whole chain" controls rather than duplicates.
-        // Collapsed by default too: most tiers never set either of them.
+        // Tier-level defaults for the two knobs that are worth applying to a
+        // whole chain: how long to wait, and how many retries. A member that sets
+        // its own value wins, so these are "fill the gaps", never overrides.
+        // Context window and selection strategy live here too — the strategy has
+        // no per-member meaning, and a chain-wide window override is occasionally
+        // the point of a tier.
         h(Disclosure, {
           title: t('tiers.defaults'),
           digest: [
-            tier.reasoningEffort === undefined ? t('member.effortDefault') : `${t('member.effort')} ${tier.reasoningEffort}`,
-            tier.contextWindow === undefined ? t('member.defaultAuto') : `${t('member.context')} ${tier.contextWindow}`,
+            tier.idleTimeoutMs === undefined ? `${t('member.timeout')} ${t('member.defaultAuto')}` : `${t('member.timeout')} ${toSeconds(tier.idleTimeoutMs)}${t('member.timeoutUnit')}`,
+            tier.attempts === undefined ? `${t('member.attempts')} ${t('member.defaultAuto')}` : `${t('member.attempts')} ${tier.attempts}`,
           ].join(' · '),
         },
         h('div', { className: 'mr-member-knobs' },
 
+          h(Field, { label: t('member.timeout'), hint: t('tiers.timeoutHint') },
+            h(NumberInput, {
+              // A tier has nothing above it but the global default, so `0` here
+              // clears the tier value and lets that apply — unlike a member,
+              // where `0` genuinely means "no limit".
+              value: tier.idleTimeoutMs === undefined ? undefined : toSeconds(tier.idleTimeoutMs),
+              ariaLabel: `${tier.name} ${t('member.timeout')}`,
+              min: 0, max: toSeconds(60_000), unit: t('member.timeoutUnit'),
+              placeholder: t('tiers.useGlobal'),
+              onChange: seconds => {
+                const { idleTimeoutMs: _drop, ...rest } = tier
+                onChange(seconds === undefined || seconds === 0 ? rest : { ...rest, idleTimeoutMs: fromSeconds(seconds) })
+              },
+            })),
+          h(Field, { label: t('member.attempts'), hint: t('tiers.attemptsHint') },
+            h(NumberInput, {
+              value: tier.attempts, ariaLabel: `${tier.name} ${t('member.attempts')}`,
+              min: 0, max: 5, placeholder: t('tiers.useGlobal'),
+              onChange: attempts => {
+                const { attempts: _drop, ...rest } = tier
+                onChange(attempts === undefined || attempts === 0 ? rest : { ...rest, attempts })
+              },
+            })),
           h(Field, { label: t('member.context'), hint: t('member.contextHint') },
             h(TokenInput, {
               value: tier.contextWindow, ariaLabel: `${tier.name} ${t('member.context')}`,
@@ -1465,9 +1510,9 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
           h('div', { className: 'mr-member-knobs' },
             h(Field, { label: t('options.timeout'), hint: t('options.timeoutHint') },
               h(NumberInput, {
-                value: toSeconds(settings.defaultIdleTimeoutMs), min: 0, max: 900, unit: t('units.sec'),
+                value: toSeconds(settings.defaultIdleTimeoutMs), min: 0, max: toSeconds(60_000), unit: t('units.sec'),
                 ariaLabel: t('options.timeout'),
-                onChange: seconds => setDraft(current => ({ ...current, defaultIdleTimeoutMs: seconds === undefined ? 90_000 : fromSeconds(seconds) })),
+                onChange: seconds => setDraft(current => ({ ...current, defaultIdleTimeoutMs: seconds === undefined ? 6_000 : fromSeconds(seconds) })),
               })),
             h(Field, { label: t('options.logLimit') },
               h(NumberInput, {
@@ -1590,8 +1635,9 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
                   members: [...tier.members, {
                     provider: route.provider,
                     model: route.model,
-                    attempts: 1,
-                    idleTimeoutMs: current.defaultIdleTimeoutMs,
+                    // A new member starts unset on both knobs, so it inherits the
+                    // tier default and then the global one. Writing a number here
+                    // would freeze today's default into the member forever.
                     enabled: true,
                   }],
                 }

@@ -49,6 +49,9 @@ export const EFFORT_LADDER = Object.freeze([
 /** Ladder ids, in display order (strongest first, matching most providers). */
 export const EFFORT_IDS = Object.freeze(['off', 'low', 'middle', 'high', 'xhigh'])
 
+/** The rank that means "reasoning off". A switch, not the bottom rung. */
+export const OFF_RANK = 0
+
 /**
  * Spellings that mean one of the five ranks.
  *
@@ -56,12 +59,17 @@ export const EFFORT_IDS = Object.freeze(['off', 'low', 'middle', 'high', 'xhigh'
  * vocabulary, so `mid`, `medium`, `balanced` and `default` all land on `middle`.
  * A provider that uses `auto` to mean "you decide" is closer to middle than to
  * any extreme.
+ *
+ * `on` is a real name in the wild — a gateway with a binary thinking toggle
+ * declares exactly `off`/`on` — and it means "thinking, at whatever the provider
+ * calls normal", so it ranks with the strength levels rather than being unknown.
  */
 const ALIASES = Object.freeze({
   off: 0, none: 0, no: 0, disabled: 0, disable: 0, zero: 0, false: 0,
   low: 1, lowest: 1, lower: 1, min: 1, minimal: 1, light: 1, fast: 1, small: 1,
   middle: 2, mid: 2, medium: 2, normal: 2, standard: 2, balanced: 2, default: 2, auto: 2, moderate: 2,
   high: 3, higher: 3, strong: 3, deep: 3, thinking: 3,
+  on: 3, enabled: 3, true: 3,
   xhigh: 4, xh: 4, extrahigh: 4, max: 4, maximum: 4, highest: 4, ultra: 4, extreme: 4, insane: 4,
 })
 
@@ -108,6 +116,20 @@ export function effortIds(efforts) {
  * of the member's advertised ids, or the effort is `undefined` and the member
  * applies its own default.
  *
+ * **`off` is a switch, not the bottom rung.** Treating it as rank 0 on one
+ * shared scale produced the worst possible translation: a member that publishes
+ * only `off`/`on` (a gateway with a binary thinking toggle) turned a request for
+ * `high` into `off`, because `off` was the only rankable neighbour. Asking for
+ * hard thinking and silently getting none is worse than sending nothing at all,
+ * so the two halves of the scale never translate into each other:
+ *
+ * - a request to *disable* reasoning only ever lands on a level that means
+ *   "off"; if the member cannot switch reasoning off, the request is dropped and
+ *   the model keeps its default (cheapest possible lane, honestly reported);
+ * - a request for *some* strength never lands on an "off" level. If the member
+ *   offers nothing but `off`, the request is dropped rather than honoured
+ *   backwards.
+ *
  * @param {string | undefined} requested - what the user chose, in any spelling.
  * @param {unknown} supported - the member's advertised efforts, or undefined when unknown.
  * @returns {{effort: string | undefined, mapped: boolean, reason: string}} the level to send, and whether it was translated.
@@ -130,12 +152,15 @@ export function mapEffort(requested, supported) {
     return { effort: undefined, mapped: true, reason: 'foreign-name' }
   }
 
+  const wantOff = wanted === OFF_RANK
   let best
   let bestRank
   let bestDistance = Infinity
   for (const id of ids) {
     const rank = rankOf(id)
     if (rank === undefined) continue
+    // Never cross the on/off boundary in either direction.
+    if ((rank === OFF_RANK) !== wantOff) continue
     const distance = Math.abs(rank - wanted)
     // Ties go to the stronger level: a request for `high` must not quietly land
     // on the cheaper of two equally close options.
@@ -146,8 +171,10 @@ export function mapEffort(requested, supported) {
     }
   }
   if (best === undefined) {
-    // Nothing rankable to translate onto, and the name itself was not published.
-    return { effort: undefined, mapped: true, reason: 'no-ladder-match' }
+    // No level on the requested side of the switch. Dropping is the only honest
+    // answer: the alternatives are "reasoning off when it was wanted" or "a name
+    // this member rejects".
+    return { effort: undefined, mapped: true, reason: wantOff ? 'cannot-disable' : 'no-thinking-level' }
   }
   return { effort: best, mapped: best !== requested, reason: bestDistance === 0 ? 'same-rank' : 'nearest-rank' }
 }

@@ -10,6 +10,7 @@ import {
   MAX_ATTEMPTS,
   MAX_IDLE_TIMEOUT_MS,
   MAX_TIERS,
+  MIN_IDLE_TIMEOUT_MS,
   ROUTER_PROVIDER,
   exposureHidesStock,
   formatTokenBudget,
@@ -41,7 +42,7 @@ test('a member needs both halves of a route', () => {
   assert.equal(normalizeMember({ provider: ROUTER_PROVIDER, model: 'm' }), undefined)
   assert.equal(normalizeMember(null), undefined)
   assert.deepEqual(normalizeMember({ provider: 'p', model: 'm' }), {
-    provider: 'p', model: 'm', attempts: DEFAULT_ATTEMPTS, idleTimeoutMs: DEFAULT_IDLE_TIMEOUT_MS, enabled: true,
+    provider: 'p', model: 'm', enabled: true,
   })
 })
 
@@ -90,10 +91,67 @@ test('a short-form budget reaches the member and the tier', () => {
 test('member knobs are clamped instead of trusted', () => {
   assert.equal(normalizeMember({ provider: 'p', model: 'm', attempts: 99 }).attempts, MAX_ATTEMPTS)
   assert.equal(normalizeMember({ provider: 'p', model: 'm', attempts: -3 }).attempts, 0)
-  assert.equal(normalizeMember({ provider: 'p', model: 'm', attempts: 'x' }).attempts, DEFAULT_ATTEMPTS)
+  // A row that does not say is *unset*, not "the default value": keeping the two
+  // apart is what lets a tier default reach the member at all.
+  assert.equal(normalizeMember({ provider: 'p', model: 'm', attempts: 'x' }).attempts, undefined)
+  assert.equal(normalizeMember({ provider: 'p', model: 'm' }).attempts, undefined)
+  assert.equal(normalizeMember({ provider: 'p', model: 'm' }).idleTimeoutMs, undefined)
   assert.equal(normalizeMember({ provider: 'p', model: 'm', idleTimeoutMs: 0 }).idleTimeoutMs, 0)
-  assert.equal(normalizeMember({ provider: 'p', model: 'm', idleTimeoutMs: 1 }).idleTimeoutMs, 5000)
+  assert.equal(normalizeMember({ provider: 'p', model: 'm', idleTimeoutMs: 1 }).idleTimeoutMs, MIN_IDLE_TIMEOUT_MS)
   assert.equal(normalizeMember({ provider: 'p', model: 'm', idleTimeoutMs: 10 ** 9 }).idleTimeoutMs, MAX_IDLE_TIMEOUT_MS)
+})
+
+test('the timeout range is two to sixty seconds, defaulting to six', () => {
+  // DSH retries a failed turn itself, and a retry is cheaper than waiting out a
+  // dead lane, so the ceiling is deliberately short.
+  assert.equal(DEFAULT_IDLE_TIMEOUT_MS, 6_000)
+  assert.equal(MIN_IDLE_TIMEOUT_MS, 2_000)
+  assert.equal(MAX_IDLE_TIMEOUT_MS, 60_000)
+  assert.equal(normalizeSettings({}).defaultIdleTimeoutMs, 6_000)
+  assert.equal(normalizeSettings({ defaultIdleTimeoutMs: 1 }).defaultIdleTimeoutMs, 2_000)
+  assert.equal(normalizeSettings({ defaultIdleTimeoutMs: 600_000 }).defaultIdleTimeoutMs, 60_000)
+  // 0 still means "no limit" for the global default: that is an explicit choice.
+  assert.equal(normalizeSettings({ defaultIdleTimeoutMs: 0 }).defaultIdleTimeoutMs, 0)
+})
+
+test('a tier can carry its own timeout and retries, and 0 means inherit', () => {
+  // The panel offers these so a chain of slow models can be given more room
+  // without editing every member. `0` is not a value here: a tier-level zero
+  // would otherwise mean "no limit for the whole chain", which is the opposite
+  // of what clearing the box should do.
+  const tier = normalizeTier({
+    id: 't', name: 'T', attempts: 2, idleTimeoutMs: 25_000,
+    members: [{ provider: 'p', model: 'm' }],
+  })
+  assert.equal(tier.attempts, 2)
+  assert.equal(tier.idleTimeoutMs, 25_000)
+  const chain = tierChain(tier)
+  assert.equal(chain[0].attempts, 2, 'the tier default reaches a member that sets none')
+  assert.equal(chain[0].idleTimeoutMs, 25_000)
+
+  const cleared = normalizeTier({ id: 't', name: 'T', attempts: 0, idleTimeoutMs: 0, members: [{ provider: 'p', model: 'm' }] })
+  assert.equal(cleared.attempts, undefined, '0 clears the tier default instead of disabling it')
+  assert.equal(cleared.idleTimeoutMs, undefined)
+  // `tierChain` resolves only the two layers it knows about; the global default
+  // is applied at dispatch, so an unset member stays `undefined` here.
+  const clearedChain = tierChain(cleared)
+  assert.equal(clearedChain[0].idleTimeoutMs, undefined, 'nothing left to inherit at this layer')
+  assert.equal(clearedChain[0].attempts, undefined)
+
+  // A member's own value still wins, including its own explicit 0.
+  const mixed = normalizeTier({
+    id: 't', name: 'T', attempts: 2, idleTimeoutMs: 25_000,
+    members: [{ provider: 'p', model: 'm', attempts: 0, idleTimeoutMs: 0 }],
+  })
+  const mixedChain = tierChain(mixed)
+  assert.equal(mixedChain[0].attempts, 0, "a member's own 0 is a real value")
+  assert.equal(mixedChain[0].idleTimeoutMs, 0)
+})
+
+test('a tier timeout is clamped to the same range as a member', () => {
+  assert.equal(normalizeTier({ id: 't', name: 'T', idleTimeoutMs: 1, members: [{ provider: 'p', model: 'm' }] }).idleTimeoutMs, MIN_IDLE_TIMEOUT_MS)
+  assert.equal(normalizeTier({ id: 't', name: 'T', idleTimeoutMs: 10 ** 9, members: [{ provider: 'p', model: 'm' }] }).idleTimeoutMs, MAX_IDLE_TIMEOUT_MS)
+  assert.equal(normalizeTier({ id: 't', name: 'T', attempts: 99, members: [{ provider: 'p', model: 'm' }] }).attempts, MAX_ATTEMPTS)
 })
 
 test('duplicate members collapse onto the first occurrence', () => {
