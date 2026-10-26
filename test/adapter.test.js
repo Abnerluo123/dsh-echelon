@@ -841,13 +841,24 @@ test('a tier advertises image when any member can see', async () => {
   assert.deepEqual(info.inputModalities, ['text', 'image'])
 })
 
-test('a text-only tier does not claim vision', async () => {
+test('an undisclosed model still lets the tier claim vision', async () => {
+  // Regression: treating "declared nothing" as "text only" made the tier
+  // advertise text, so DSH flattened the image BEFORE dispatch and a real vision
+  // model answered "I cannot see your image".
   const { adapter } = wire(
-    tierSettings([{ provider: 'blind', model: 'one' }]),
-    { models: { blind: { models: [{ id: 'one' }] } }, routes: {} },
+    tierSettings([{ provider: 'silent', model: 'one' }]),
+    { models: { silent: { models: [{ id: 'one' }] } }, routes: {} },
   )
-  assert.deepEqual((await adapter.listModels('model-router'))[0].inputModalities, ['text'], 'a model that discloses nothing stays text')
-  assert.deepEqual((await adapter.resolveModel('model-router', 'auto')).inputModalities, ['text'])
+  assert.deepEqual((await adapter.listModels('model-router'))[0].inputModalities, ['text', 'image'], 'no disclosure means vision cannot be ruled out')
+  assert.deepEqual((await adapter.resolveModel('model-router', 'auto')).inputModalities, ['text', 'image'])
+})
+
+test('a tier whose members all declare text-only does not claim vision', async () => {
+  const { adapter } = wire(
+    tierSettings([{ provider: 'plain', model: 'one' }]),
+    { models: { plain: { models: [{ id: 'one', inputModalities: ['text'] }] } }, routes: {} },
+  )
+  assert.deepEqual((await adapter.listModels('model-router'))[0].inputModalities, ['text'], 'an explicit text-only declaration is respected')
 })
 
 test('output streams as it arrives instead of arriving in one burst', async () => {
@@ -1064,4 +1075,41 @@ test('a live image in the current turn still routes to the vision member', async
   )
   await collect(adapter, 'auto', { messages: IMAGE_MESSAGE })
   assert.equal(log.read().entries[0].provider, 'eyes', 'the scoping change must not disable vision routing')
+})
+
+test('an undeclared member is tried for an image instead of being dropped', async () => {
+  // DSH forwards images untouched to a model that declares nothing, so such a
+  // member can genuinely serve the request. Dropping it was the reason a vision
+  // model behind a silent gateway never saw the picture.
+  const { adapter, log } = wire(
+    tierSettings([{ provider: 'plain', model: 'declared-text' }, { provider: 'silent', model: 'undeclared' }]),
+    {
+      models: {
+        plain: { models: [{ id: 'declared-text', inputModalities: ['text'] }] },
+        silent: { models: [{ id: 'undeclared' }] },
+      },
+      routes: { 'plain/declared-text': [answer('text only')], 'silent/undeclared': [answer('may see it')] },
+    },
+  )
+  await collect(adapter, 'auto', { messages: IMAGE_MESSAGE })
+  const entry = log.read().entries[0]
+  assert.equal(entry.provider, 'silent', 'the undeclared member is a candidate')
+  assert.ok(entry.attempts.some(attempt => attempt.code === 'NO_VISION' && attempt.provider === 'plain'), 'the explicit text-only member is still reported as skipped')
+})
+
+test('a confirmed vision member outranks an undeclared one', async () => {
+  // Order is preserved within each class, but a member that said "I see images"
+  // must be preferred over one that never said anything.
+  const { adapter, log } = wire(
+    tierSettings([{ provider: 'silent', model: 'undeclared' }, { provider: 'eyes', model: 'declared' }]),
+    {
+      models: {
+        silent: { models: [{ id: 'undeclared' }] },
+        eyes: { models: [{ id: 'declared', inputModalities: ['text', 'image'] }] },
+      },
+      routes: { 'eyes/declared': [answer('sure vision')], 'silent/undeclared': [answer('maybe')] },
+    },
+  )
+  await collect(adapter, 'auto', { messages: IMAGE_MESSAGE })
+  assert.equal(log.read().entries[0].provider, 'eyes', 'the confirmed member wins even though it is second')
 })

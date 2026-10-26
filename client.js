@@ -161,6 +161,7 @@ window.__ModuleLoader__.load({
         'log.elapsed': '{ms} ms',
         'log.tokens': '{input} 输入 / {output} 输出',
         'log.skipped': '跳过',
+        'log.vision': '含图片',
         'log.contextSkip': '上下文装不下',
         'log.dropped': '（另有 {n} 次尝试未显示）',
 
@@ -300,6 +301,7 @@ window.__ModuleLoader__.load({
         'log.elapsed': '{ms} ms',
         'log.tokens': '{input} in / {output} out',
         'log.skipped': 'skipped',
+        'log.vision': 'with image',
         'log.contextSkip': 'does not fit the context',
         'log.dropped': '({n} more attempts hidden)',
 
@@ -985,6 +987,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'mr-log-head' },
           h('span', { className: `mr-badge ${badge}` }, label),
           h('strong', { style: { fontWeight: 500 } }, entry.tierName ?? entry.tier),
+          entry.vision === true ? h('span', { className: 'mr-pill' }, t('log.vision')) : null,
           h('span', { className: 'mr-log-time' }, clock),
           h('span', { className: 'mr-log-time' }, t('log.elapsed', { ms: entry.durationMs })),
           entry.provider === undefined

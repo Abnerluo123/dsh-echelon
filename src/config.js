@@ -541,6 +541,37 @@ export function isRetryable(code) {
   return RETRYABLE_CODES.includes(code)
 }
 
+
+/**
+ * Whether a member can accept an image: yes, no, or unknown.
+ *
+ * "Unknown" is its own answer and the distinction matters. DSH only flattens
+ * images for a model that explicitly declares a set **without** `image`; a model
+ * that declares nothing receives the image untouched. So an undeclared member is
+ * not evidence that it cannot see — and treating it as such was exactly the bug
+ * that made a real vision model report "I can't see your image": the tier
+ * advertised text-only, so DSH replaced the image with a placeholder before the
+ * router ever chose a member.
+ * @param {object} member - chain entry, optionally carrying `seesImages`.
+ * @returns {true | false | undefined} true = declares/forced vision, false = explicitly text-only, undefined = not disclosed.
+ */
+export function visionOf(member) {
+  if (member?.seesImages === true) return true
+  if (member?.seesImages === false) return false
+  const declared = member?.inputModalities
+  if (!Array.isArray(declared)) return undefined
+  return declared.includes('image')
+}
+
+/**
+ * Whether a member is known to be unable to see.
+ * @param {object} member - chain entry.
+ * @returns {boolean} true only when the model said so (or the user forced it).
+ */
+export function seesImages(member) {
+  return visionOf(member) === true
+}
+
 /**
  * Split a chain by whether its members can see images.
  *
@@ -548,54 +579,48 @@ export function isRetryable(code) {
  * not start preferring vision models, because that would reorder the chain for
  * every ordinary turn.
  *
- * Members that disclose no modalities are treated as text-only, matching how DSH
- * reads a missing `inputModalities`. That is deliberately the conservative
- * choice: promising vision to a model that never claimed it would hand an image
- * to an endpoint that cannot accept one.
+ * Candidates are ordered confirmed-vision first, then undisclosed. A member that
+ * explicitly declared text-only is dropped, because DSH would flatten the image
+ * for it and the user would get an answer about a picture nobody looked at.
  * @param {Array<object>} chain - dispatch chain, entries carrying `inputModalities`.
  * @param {boolean} needsImage - whether the request contains an image.
- * @returns {{usable: Array<object>, skipped: Array<{provider: string, model: string}>}} members that can see, and those that cannot.
+ * @returns {{usable: Array<object>, skipped: Array<{provider: string, model: string}>}} ordered candidates and the members that cannot see.
  */
 export function splitByModality(chain, needsImage) {
   if (needsImage !== true) return { usable: chain, skipped: [] }
-  const usable = []
+  const sure = []
+  const unknown = []
   const skipped = []
   for (const member of chain) {
-    if (seesImages(member)) usable.push(member)
-    else skipped.push({ provider: member.provider, model: member.model })
+    const vision = visionOf(member)
+    if (vision === true) sure.push(member)
+    else if (vision === false) skipped.push({ provider: member.provider, model: member.model })
+    else unknown.push(member)
   }
-  return { usable, skipped }
-}
-
-/**
- * Whether a member can accept an image, honouring the user's override.
- * @param {object} member - chain entry, optionally carrying `seesImages`.
- * @returns {boolean} true when images can be sent to it.
- */
-export function seesImages(member) {
-  if (member?.seesImages === true) return true
-  if (member?.seesImages === false) return false
-  return Array.isArray(member?.inputModalities) && member.inputModalities.includes('image')
+  // Confirmed vision wins; undisclosed members are still worth trying, because
+  // DSH forwards the image to them rather than flattening it.
+  return { usable: [...sure, ...unknown], skipped }
 }
 
 /**
  * The input modalities a tier should advertise.
  *
- * The union, not the intersection: advertising only what every member shares
- * would mark a tier text-only as soon as one text model joins, and DSH would
- * then flatten every image before the router ever saw it. Advertising the union
- * matches the window rule — claim the most the chain can do, then route each
- * request to a member that can do it.
- * @param {Array<unknown>} lists - one modality list per member.
- * @returns {string[]} `['text']`, or `['text', 'image']` when any member sees images.
+ * Image is claimed unless **every** member explicitly declared text-only. A tier
+ * that under-claims is the worst case: DSH flattens images before dispatch, so a
+ * chain full of vision models answers "I cannot see images". Undisclosed members
+ * count as a reason to claim, because DSH passes images to them untouched.
+ * @param {Array<unknown>} entries - modality lists, or chain members carrying an override.
+ * @returns {string[]} `['text']`, or `['text', 'image']` when vision cannot be ruled out.
  */
-export function unionModalities(lists) {
-  const canSee = lists.some(entry => {
-    // Entries may be a raw modality list or a chain member carrying an override.
-    if (entry !== null && typeof entry === 'object' && !Array.isArray(entry) && 'seesImages' in entry) {
-      return seesImages(entry)
-    }
-    return Array.isArray(entry) && entry.includes('image')
+export function unionModalities(entries) {
+  const list = Array.isArray(entries) ? entries : []
+  if (list.length === 0) return ['text']
+  const canSee = list.some(entry => {
+    // Entries are usually chain members; a raw modality list is also accepted.
+    const subject = entry !== null && typeof entry === 'object' && !Array.isArray(entry) && ('seesImages' in entry || 'inputModalities' in entry)
+      ? entry
+      : { inputModalities: entry }
+    return visionOf(subject) !== false
   })
   return canSee ? ['text', 'image'] : ['text']
 }

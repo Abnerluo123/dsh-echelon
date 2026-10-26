@@ -124,7 +124,7 @@ Several gateways serve images without disclosing `inputModalities`, so they get 
 
 | Value | Meaning |
 |---|---|
-| Follow the model (default) | use the adapter's declaration; undeclared means text-only |
+| Follow the model (default) | use the adapter's declaration; **undeclared still counts as a candidate** (DSH forwards images to a model that declares nothing) |
 | Force: sees images | treat it as vision-capable even without a declaration |
 | Force: cannot see | never send it an image, even if it claims support |
 

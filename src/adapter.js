@@ -390,7 +390,7 @@ export class RouterAdapter extends Adapter {
   async resolveModel(provider, model) {
     const { settings } = this.#store.read()
     const tier = settings.tiers.find(candidate => candidate.id === model)
-    const allModalities = () => unionModalities(chain.map((member, index) => (member.seesImages === undefined ? usable[index]?.inputModalities : member)))
+    const allModalities = () => unionModalities(chain.map((member, index) => (member.seesImages === undefined ? (infos[index] ?? member) : member)))
     const base = { provider, id: model, name: tier?.name ?? model, inputModalities: ['text'] }
     if (tier === undefined) {
       // Unknown ids still resolve, so a stored selection keeps rendering after
@@ -712,6 +712,7 @@ export class RouterAdapter extends Adapter {
             provider: member.provider,
             model: member.model,
             estimate: routed.estimate,
+            ...(routed.vision === true ? { vision: true } : {}),
             ...(Number.isFinite(member.contextWindow) ? { contextWindow: member.contextWindow } : {}),
             ...(outcome.usage === undefined ? {} : { usage: usageOf([outcome.usage]) }),
           })
