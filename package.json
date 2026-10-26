@@ -75,10 +75,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Abnerluo123/dsh-model-router.git"
+    "url": "git+https://github.com/Abnerluo123/dsh-echelon.git"
   },
-  "homepage": "https://github.com/Abnerluo123/dsh-model-router#readme",
+  "homepage": "https://github.com/Abnerluo123/dsh-echelon#readme",
   "bugs": {
-    "url": "https://github.com/Abnerluo123/dsh-model-router/issues"
+    "url": "https://github.com/Abnerluo123/dsh-echelon/issues"
   }
 }

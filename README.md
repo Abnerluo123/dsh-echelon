@@ -2,7 +2,7 @@
 
 > 给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 用的**挡位式模型路由**。把十几个模型收成几个你自己命名的名字，选中一个，背后是一条有序的真实模型链：按序调用、失败重试、自动降级。
 
-[![version](https://img.shields.io/badge/version-1.3.0-blue)](https://github.com/Abnerluo123/dsh-model-router/releases)
+[![version](https://img.shields.io/badge/version-1.3.0-blue)](https://github.com/Abnerluo123/dsh-echelon/releases)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English](README.en.md)
@@ -101,7 +101,7 @@ Echelon 是 **DSH 插件**，不是独立的模型网关 —— 这个区别决�
 |---|---|
 | **npm**（推荐） | `dsh plugin --profile desktop add dsh-echelon` |
 | 指定版本 | 加 `#v1.3.0` |
-| GitHub 源码 | `dsh plugin --profile desktop add github:Abnerluo123/dsh-model-router` |
+| GitHub 源码 | `dsh plugin --profile desktop add github:Abnerluo123/dsh-echelon` |
 | 插件市场 | 插件 → 插件市场，搜索 `Echelon` |
 
 `desktop` 换成你的 profile 名（`dsh profile list`）。

@@ -2,7 +2,7 @@
 
 > **Tier-based model routing** for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Collapse a dozen models into a few names you choose; behind each name is an ordered chain of real models — called in order, retried, failed over automatically.
 
-[![version](https://img.shields.io/badge/version-1.3.0-blue)](https://github.com/Abnerluo123/dsh-model-router/releases)
+[![version](https://img.shields.io/badge/version-1.3.0-blue)](https://github.com/Abnerluo123/dsh-echelon/releases)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [中文](README.md)
@@ -99,7 +99,7 @@ If you want to stop memorising a dozen model names **inside DSH**, with automati
 |---|---|
 | **npm** (recommended) | `dsh plugin --profile desktop add dsh-echelon` |
 | Pin a version | append `#v1.3.0` |
-| GitHub source | `dsh plugin --profile desktop add github:Abnerluo123/dsh-model-router` |
+| GitHub source | `dsh plugin --profile desktop add github:Abnerluo123/dsh-echelon` |
 | Plugin market | Plugins → Market, search `Echelon` |
 
 Replace `desktop` with your profile name (`dsh profile list`).
