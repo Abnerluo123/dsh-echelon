@@ -74,6 +74,32 @@ Requires **DSH ≥ 0.2.0-rc.1** and **Node ≥ 22.14.0**. **Restart `dsh`** afte
 - **Saves apply immediately**: no restart, no page reload.
 - **Settings file**: `$DSH_HOME/model-router/settings.json`, hand-editable (and `"128k"` is accepted there too); writes go through a temp file and a rename.
 
+### How the timeout is decided
+
+The panel shows one line; the detail lives here.
+
+The watchdog measures **progress**, not traffic. The difference matters: many gateways keep a stalled stream warm with heartbeats, empty deltas or usage-only rows, and a rule of "any data arrived" lets such an attempt run forever while the screen stays blank.
+
+Counts as progress: a `text-delta` / `reasoning-delta` with non-whitespace text (one character is enough), a tool call with a name or non-empty arguments, a block boundary, the finish chunk. Does **not** count: empty strings, whitespace-only deltas, usage-only rows, unknown heartbeat types.
+
+One budget covers all three places a member can stall:
+
+| Stage | Before | Now |
+|---|---|---|
+| `resolveModelInfo` | no deadline (a hang left the log empty) | 8s, then degrades to "capabilities unknown" |
+| `prepareCall` | no deadline | the member's own budget |
+| streaming | only when nothing at all arrived | same budget, judged by progress |
+
+On timeout the member's request is **cancelled**, and cleanup is bounded to one second — otherwise the cleanup itself blocks on the same read, which is how an 8-second budget produced a 277-second attempt.
+
+On false positives: a model that thinks keeps emitting reasoning deltas and is never cut off, and a model waiting on a local command has already finished its call with a tool-call block — so a ten-minute local task is unaffected.
+
+### How the inputs behave
+
+- Nothing is validated or corrected **while typing**: you can clear "90" to "9", to empty, and retype.
+- Normalisation happens once, on **blur or Enter**: below the minimum becomes the minimum, above the maximum becomes the maximum, empty means "unset".
+- No stepper arrows; arrow keys and the wheel cannot change a value.
+
 ## How it differs from other tools
 
 Echelon is a **DSH plugin**, not a standalone model gateway — that difference decides what it is good for:
@@ -122,7 +148,7 @@ Replace `desktop` with your profile name (`dsh profile list`).
 ## Development
 
 ```sh
-node --test test/               # 209 tests, no network needed
+node --test test/               # 211 tests, no network needed
 node scripts/verify-profile.mjs # can the current profile load this plugin?
 ```
 

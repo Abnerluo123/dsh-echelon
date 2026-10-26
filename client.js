@@ -68,22 +68,22 @@ window.__ModuleLoader__.load({
         'member.provider': '来源',
         'member.model': '模型',
         'member.attempts': '重试次数',
-        'member.attemptsHint': '这个模型失败后再试几次才换下一个（0 = 不重试）。',
+        'member.attemptsHint': '失败后重试几次再换下一个。0 = 不重试。',
         'member.timeout': '超时',
-        'member.timeoutHint': '这么久没有任何进展就换下一个。注意是「进展」不是「数据」：只发心跳、空包、计量行不算，会照常超时。模型的思考过程算进展；模型要等本地命令跑完时，请求已经结束不会有影响。0 = 不限制。',
+        'member.timeoutHint': '这么久没有进展就换下一个。0 = 不限制。',
         'member.timeoutUnit': '秒',
         'member.unlimited': '不限制',
         'member.effort': '思考强度',
         'member.effortDefault': '跟随会话',
         'member.effortOff': '关闭思考',
-        'member.effortHint': '下拉里只有这个模型自己上报的档位。留空则跟随会话选择；选了具体档位，这个成员只用这个档位。',
+        'member.effortHint': '只列该模型上报的档位。留空跟随会话。',
         'member.effortStale': '模型没上报',
         'member.context': '上下文长度',
         'tiers.strategy': '选人策略',
         'tiers.strategyOrder': '按顺序（第一个装得下的）',
         'tiers.strategyRoomy': '优先剩余空间最大的',
-        'tiers.strategyHint': '优先剩余空间能减少长对话被挤到刚好够用的模型上；顺序模式更可预测。',
-        'member.contextHint': '留空则用模型自己上报的值；填了会覆盖它。挡位按成员里最大的那个上报，请求装不下当前模型时会自动换能装下的成员。',
+        'tiers.strategyHint': '按顺序更可预测；优先空间能少挤长对话。',
+        'member.contextHint': '留空用模型上报值，填了覆盖它。支持 128k / 1m。',
         'member.maxTokens': '最大输出',
         'member.defaultAuto': '模型默认',
         'member.enabled': '启用',
@@ -96,7 +96,7 @@ window.__ModuleLoader__.load({
         'member.seesImagesAuto': '跟随模型上报',
         'member.seesImagesYes': '强制支持图像',
         'member.seesImagesNo': '强制不支持',
-        'member.seesImagesHint': '模型没上报但实际能看图时选「强制支持」。没写出这个字段的模型默认按不支持处理。',
+        'member.seesImagesHint': '模型没上报但实际能看图时选「强制支持」。',
         'member.probe': '检测',
         'member.probeOk': '可用',
         'member.probeFail': '不可用',
@@ -111,12 +111,12 @@ window.__ModuleLoader__.load({
 
         'expose.title': '模型选择器的显示',
         'expose.tiers': '只显示挡位',
-        'expose.tiersHint': '隐藏下面所有真实模型，只留你定义的挡位。请先确认挡位能正常作答。',
+        'expose.tiersHint': '隐藏真实模型，只留挡位。',
         'expose.custom': '只隐藏我勾选的',
         'expose.customHint': '挡位和未勾选的模型都显示。',
         'expose.all': '全部显示',
         'expose.allHint': '挡位和其它模型并排显示。默认。',
-        'expose.blocked': '挡位还没有可用成员，暂时不会隐藏其它模型——否则模型选择器会变成空的。',
+        'expose.blocked': '挡位还没有可用成员，暂不隐藏——否则选择器会变空。',
         'expose.hiding': '当前会隐藏 {hidden} / {total} 个模型',
         'expose.hideAll': '全选',
         'expose.hideNone': '全不选',
@@ -129,16 +129,16 @@ window.__ModuleLoader__.load({
         'options.copy': '复制路径',
         'options.copied': '已复制',
         'options.imageScope': '只看本轮的图片',
-        'options.imageScopeHint': '关掉后，整段会话里只要还有图就一直用视觉模型。打开则旧图不再影响选人（旧图会被降级成文字）。',
+        'options.imageScopeHint': '关掉后旧图也会一直影响选人。',
         'options.modalityRouting': '有图片时自动选能看图的成员',
-        'options.modalityRoutingHint': '请求带图片时，跳过不支持视觉的成员，避免图片被静默转成文字。',
+        'options.modalityRoutingHint': '带图时跳过看不了图的成员。',
         'options.defaultEffort': '新对话默认强度',
         'options.defaultEffortModel': '跟随模型',
-        'options.defaultEffortHint': '新开会话时预选的档位。开启映射时它就是选择器里的五档之一；关闭映射时会对齐到该挡位模型自己上报的档位。已存在的会话不受影响。',
+        'options.defaultEffortHint': '新会话预选的档位，已存在的会话不受影响。',
         'options.effortMapping': '思考强度自动映射',
-        'options.effortMappingHint': '开启：选择器统一显示 off / low / middle / high / xhigh，选中后按每个成员自己上报的档位翻译（成员没有这个档位就换成最接近的，完全没有就交给模型自己的默认）。关闭：直接显示模型自己上报的档位并原样转发。',
+        'options.effortMappingHint': '开启：选择器统一五档，按成员翻译。关闭：显示模型自己的档位并原样转发。',
         'options.logging': '记录调用日志',
-        'options.loggingHint': '只存在内存里，重启即清空。用来查这一轮到底用了哪个模型、为什么换掉前一个。',
+        'options.loggingHint': '只在内存里，重启即清空。',
         'options.logLimit': '保留条数',
 
         'tabs.configure': '配置',
@@ -147,7 +147,7 @@ window.__ModuleLoader__.load({
         'tabs.log': '调用日志',
 
         'log.title': '调用日志',
-        'log.hint': '每次请求一条：最终由哪个模型作答、试过哪些成员、各自为什么失败或跳过（上下文装不下）、耗时多久。只存在内存里。',
+        'log.hint': '挡位 → 真实模型、试过谁、档位怎么翻译的。只在内存里。',
         'log.refresh': '刷新',
         'log.clear': '清空',
         'log.empty': '还没有记录。发一条消息后再回来看看。',
@@ -216,22 +216,22 @@ window.__ModuleLoader__.load({
         'member.provider': 'Route',
         'member.model': 'Model',
         'member.attempts': 'Retries',
-        'member.attemptsHint': 'Extra tries on this model before failing over (0 = none).',
+        'member.attemptsHint': 'Extra tries before failing over. 0 = none.',
         'member.timeout': 'Timeout',
-        'member.timeoutHint': 'Fail over after this long without progress. Progress, not traffic: keepalives, empty deltas and usage rows do not count, so a stalled lane still times out. Reasoning tokens do count, and a model waiting on a local command has already finished its request. 0 = no limit.',
+        'member.timeoutHint': 'Fail over after this long without progress. 0 = no limit.',
         'member.timeoutUnit': 's',
         'member.unlimited': 'no limit',
         'member.effort': 'Reasoning',
         'member.effortDefault': 'Follow session',
         'member.effortOff': 'No reasoning',
-        'member.effortHint': 'The menu lists only what this model publishes. Empty follows the session; a chosen level is the only one this member uses.',
+        'member.effortHint': 'Only levels this model publishes. Empty follows the session.',
         'member.effortStale': 'not published',
         'member.context': 'Context window',
         'tiers.strategy': 'Selection',
         'tiers.strategyOrder': 'Chain order (first that fits)',
         'tiers.strategyRoomy': 'Most free space first',
-        'tiers.strategyHint': 'Preferring headroom avoids squeezing a long session into a model that barely fits; chain order is more predictable.',
-        'member.contextHint': 'Empty uses what the model reports; an override replaces it. The tier advertises the largest member window, and a request too large for one member moves to one that fits.',
+        'tiers.strategyHint': 'Chain order is more predictable; headroom suits long sessions.',
+        'member.contextHint': 'Empty uses the model value; an override replaces it. Accepts 128k / 1m.',
         'member.maxTokens': 'Max output',
         'member.defaultAuto': 'Model default',
         'member.enabled': 'Enabled',
@@ -244,7 +244,7 @@ window.__ModuleLoader__.load({
         'member.seesImagesAuto': 'Follow the model',
         'member.seesImagesYes': 'Force: sees images',
         'member.seesImagesNo': 'Force: cannot see',
-        'member.seesImagesHint': 'Pick "Force: sees images" when a model supports images but does not declare it. Undeclared models are treated as text-only.',
+        'member.seesImagesHint': 'Choose "Force: sees images" when a model sees images without declaring it.',
         'member.probe': 'Test',
         'member.probeOk': 'available',
         'member.probeFail': 'unavailable',
@@ -277,16 +277,16 @@ window.__ModuleLoader__.load({
         'options.copy': 'Copy path',
         'options.copied': 'Copied',
         'options.imageScope': 'Only this turn\'s image counts',
-        'options.imageScopeHint': 'Off keeps using a vision model while any image remains in the conversation. On lets older images stop affecting selection (they are flattened to text for a text-only member).',
+        'options.imageScopeHint': 'Off lets older images keep affecting selection.',
         'options.modalityRouting': 'Route images to a model that can see',
-        'options.modalityRoutingHint': 'When a request carries an image, skip members that cannot see it instead of letting DSH flatten it to text.',
+        'options.modalityRoutingHint': 'Skip members that cannot see an attached image.',
         'options.defaultEffort': 'Default level for new chats',
         'options.defaultEffortModel': 'Follow the model',
-        'options.defaultEffortHint': 'Pre-selected level when a conversation starts. With mapping on it is one of the five levels the picker shows; with it off the choice is snapped onto what that tier\'s models publish. Existing conversations are unaffected.',
+        'options.defaultEffortHint': 'Preselected for new conversations only.',
         'options.effortMapping': 'Map reasoning levels automatically',
-        'options.effortMappingHint': 'On: the picker shows off / low / middle / high / xhigh, and each selection is translated into the answering member\'s own level (nearest published one, or the model\'s default when it publishes none). Off: the model\'s own levels are shown and forwarded as written.',
+        'options.effortMappingHint': 'On: one five-level vocabulary, translated per member. Off: the model\'s own levels, forwarded as written.',
         'options.logging': 'Record a request log',
-        'options.loggingHint': 'In memory only; cleared by a restart. Shows which model served each turn and why earlier ones were dropped.',
+        'options.loggingHint': 'In memory only; cleared by a restart.',
         'options.logLimit': 'Entries kept',
 
         'tabs.configure': 'Configure',
@@ -295,7 +295,7 @@ window.__ModuleLoader__.load({
         'tabs.log': 'Request log',
 
         'log.title': 'Request log',
-        'log.hint': 'One row per request: which model answered, every member tried, why each failed or was skipped (context too large), and how long it took. In memory only.',
+        'log.hint': 'Tier → real model, every member tried, how the level was translated. In memory only.',
         'log.refresh': 'Refresh',
         'log.clear': 'Clear',
         'log.empty': 'Nothing yet. Send a message, then come back.',
@@ -677,15 +677,19 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
     }
 
     /**
-     * A numeric input without spinner arrows.
+     * A numeric input that never fights the person typing in it.
      *
-     * `type: 'number'` was actively hostile here: the browser's stepper rewrites
-     * the value on arrow keys and on scroll-wheel, which is how "I typed 90 and
-     * it jumped to 87" happens — a wheel event over the field silently commits a
-     * different number while the user is scrolling the panel. So the field is
-     * `text` with `inputMode="numeric"` (keeps the mobile keypad) and the arrows
-     * are suppressed in CSS as well, because some shells render a spinner for
-     * `inputmode` alone.
+     * Two separate mistakes are guarded against here, both reported:
+     *
+     * 1. `type: 'number'` renders a stepper that rewrites the value on an arrow
+     *    key or a wheel event, so a half-typed number silently changes. The field
+     *    is `text` with `inputMode="numeric"` instead, and the CSS suppresses any
+     *    spinner a shell might draw anyway.
+     * 2. Clamping on every keystroke. Typing "90" passes through "9", which the
+     *    old code immediately rewrote to the minimum — so the box jumped to a
+     *    big number the moment you tried to clear it and retype. A draft is now
+     *    taken literally while it is being typed, and normalised exactly once,
+     *    when the field is committed (blur or Enter).
      *
      * An empty box means "unset", which is a real choice and not the same as
      * zero, so the draft keeps the key absent rather than storing a sentinel.
@@ -693,20 +697,31 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
     function NumberInput({ value, min, max, onChange, ariaLabel, unit, placeholder }) {
       const [draft, setDraft] = useState(value === undefined ? '' : String(value))
       useEffect(() => { setDraft(value === undefined ? '' : String(value)) }, [value])
+      /** Normalise the typed draft into a committed value. */
+      const commit = () => {
+        const text = draft.trim()
+        if (text === '') { onChange(undefined); return }
+        const parsed = Number(text)
+        if (!Number.isFinite(parsed)) { setDraft(value === undefined ? '' : String(value)); return }
+        const bounded = min === undefined && max === undefined
+          ? Math.trunc(parsed)
+          : Math.min(Math.max(Math.trunc(parsed), min ?? parsed), max ?? parsed)
+        // Show the normalised number, so the box agrees with what was saved.
+        setDraft(String(bounded))
+        onChange(bounded)
+      }
       return h('div', { className: 'mr-input-row' },
         h('input', {
           type: 'text', inputMode: 'numeric', autoComplete: 'off', spellCheck: false,
           value: draft, 'aria-label': ariaLabel, placeholder,
-          onChange: event => {
-            const text = event.target.value.replace(/[^\d]/g, '')
-            setDraft(text)
-            if (text === '') { onChange(undefined); return }
-            const parsed = Number(text)
-            onChange(min === undefined && max === undefined ? parsed : Math.min(Math.max(parsed, min ?? 0), max ?? parsed))
-          },
-          onBlur: () => {
-            const text = draft.trim()
-            if (text === '' || !Number.isFinite(Number(text))) setDraft(value === undefined ? '' : String(value))
+          // Digits only, in the field, at all times — no clamping.
+          onChange: event => setDraft(event.target.value.replace(/[^\d]/g, '')),
+          onBlur: commit,
+          onKeyDown: event => {
+            if (event.key !== 'Enter') return
+            event.preventDefault()
+            commit()
+            event.currentTarget.blur()
           },
         }),
         unit === undefined ? null : h('span', { className: 'mr-unit' }, unit))

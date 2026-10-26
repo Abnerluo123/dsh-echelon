@@ -375,19 +375,52 @@ test('a deleted tier still resolves so a stored selection keeps rendering', asyn
 })
 
 test('traffic is not progress', () => {
-  // The watchdog used to reset on any chunk, so a gateway that pings every second
-  // while producing nothing kept the attempt alive forever — "几分钟没输出，超时
-  // 也没拦住". Only content counts now.
+  // Two versions of this hole, both reported. First the watchdog reset on any
+  // chunk, so a lane pinging once a second stayed alive forever. Then it keyed off
+  // the chunk *type*, which still let empty deltas through — the reported case is
+  // a lane that produced nothing for 277 seconds under an 8-second budget. Payload
+  // is the only reliable signal.
   assert.equal(carriesProgress({ type: 'usage', usage: { inputTokens: 1 } }), false, 'a bare usage row is not progress')
-  assert.equal(carriesProgress({ type: 'reasoning-delta', text: '' }), true, 'empty reasoning still counts')
-  assert.equal(carriesProgress({ type: 'text-delta', text: '' }), true, 'even an empty delta came from the generator')
+  assert.equal(carriesProgress({ type: 'text-delta', text: '' }), false, 'an empty delta is a keepalive')
+  assert.equal(carriesProgress({ type: 'text-delta', text: '   ' }), false, 'whitespace is not content either')
+  assert.equal(carriesProgress({ type: 'reasoning-delta', text: '' }), false, 'an empty reasoning delta is a keepalive')
+  assert.equal(carriesProgress({ type: 'tool-call-delta', argumentsDelta: '' }), false, 'empty arguments are a keepalive')
+  assert.equal(carriesProgress({ type: 'text-delta', text: 'x' }), true, 'one real character is progress')
   assert.equal(carriesProgress({ type: 'reasoning-delta', text: 'thinking' }), true)
-  assert.equal(carriesProgress({ type: 'text-delta', text: 'x' }), true)
   assert.equal(carriesProgress({ type: 'tool-call-delta', argumentsDelta: '{}' }), true)
+  assert.equal(carriesProgress({ type: 'tool-call-delta', name: 'search' }), true)
   assert.equal(carriesProgress({ type: 'block-end', block: { type: 'text', text: '' } }), true)
   assert.equal(carriesProgress({ type: 'finish', reason: { kind: 'stop' } }), true)
   assert.equal(carriesProgress({ type: 'unknown-heartbeat' }), false)
   assert.equal(carriesProgress(undefined), false)
+})
+
+test('a stream of empty deltas is abandoned as a timeout', async () => {
+  // The exact reported failure: a lane that keeps the socket warm with empty
+  // chunks while producing nothing.
+  async function* keepalive() {
+    for (let index = 0; index < 100; index += 1) {
+      await new Promise(resolve => setTimeout(resolve, 5))
+      yield { type: 'text-delta', text: '' }
+    }
+  }
+  const verdict = await runMember(keepalive(), undefined, 60)
+  assert.equal(verdict.kind, 'failed')
+  assert.equal(verdict.code, 'TIMEOUT')
+})
+
+test('a timeout releases the member instead of blocking on cleanup', async () => {
+  // The `277767 ms` TIMEOUT under an 8-second budget: the deadline fired, then
+  // `iterator.return()` awaited the very read that hung, so the attempt ran for
+  // minutes after being declared dead. Cleanup must be bounded.
+  async function* stuck() {
+    while (true) await new Promise(() => {})
+  }
+  const startedAt = Date.now()
+  const verdict = await runMember(stuck(), undefined, 50)
+  const elapsed = Date.now() - startedAt
+  assert.equal(verdict.code, 'TIMEOUT')
+  assert.ok(elapsed < 5_000, `the attempt settled promptly (took ${elapsed}ms)`)
 })
 
 test('a stream that only sends keepalives is abandoned as a timeout', async () => {

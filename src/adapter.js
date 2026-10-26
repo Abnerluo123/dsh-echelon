@@ -157,7 +157,7 @@ function failureOf(reason) {
  * @param {{verdict?: object}} sink - receives the verdict before the generator ends.
  * @returns {AsyncGenerator<object>} committed chunks only.
  */
-export async function* streamMember(stream, signal, idleTimeoutMs = 0, sink = {}) {
+export async function* streamMember(stream, signal, idleTimeoutMs = 0, sink = {}, abort) {
   const held = []
   let committed = false
   let failure
@@ -167,20 +167,16 @@ export async function* streamMember(stream, signal, idleTimeoutMs = 0, sink = {}
   // Progress, not mere traffic, resets the watchdog.
   //
   // The per-step deadline below only bounds one `next()` call, so a gateway that
-  // sends a keepalive — an empty `text-delta`, a usage-only row, a heartbeat
-  // event — every few hundred milliseconds keeps every individual wait short and
-  // the attempt alive forever, with nothing on screen. That is precisely the
-  // "模型几分钟没输出，超时也没拦住" report. So a second clock measures time
-  // since the last chunk that actually *carries* something, and the same idle
-  // budget applies to it.
+  // sends a keepalive — an empty delta, a usage-only row, a heartbeat event —
+  // every few hundred milliseconds keeps every individual wait short and the
+  // attempt alive forever, with nothing on screen. That is precisely the
+  // "模型几分钟没输出，超时也没拦住" report. So a second clock measures time since
+  // the last chunk that actually *carries* something, and the same idle budget
+  // applies to it.
   //
-  // What counts as progress is deliberately generous, because a false timeout is
-  // worse than a slow answer: any text or reasoning delta (even one character),
-  // any tool-call delta, any block boundary, and the terminal finish. A model that
-  // thinks for ten minutes is producing reasoning deltas and is therefore never
-  // interrupted. Long local tool execution is safe for a different reason: by the
-  // time a tool runs, the model call has already finished with a tool-call block,
-  // so this generator is no longer waiting on the provider at all.
+  // `carriesProgress` is about payload, not chunk shape: an empty delta is a
+  // keepalive. Reasoning counts as fully as prose, so a long think is never cut
+  // off, and a member waiting on a local command has already finished its call.
   let lastProgressAt = Date.now()
   const iterator = stream[Symbol.asyncIterator]()
   const timeoutMessage = () => `超过 ${Math.round(idleTimeoutMs / 1000)} 秒没有进展（收到过空数据，但没有任何输出）`
@@ -189,17 +185,55 @@ export async function* streamMember(stream, signal, idleTimeoutMs = 0, sink = {}
     sink.verdict = verdict
     return verdict
   }
+  /**
+   * Release the member, without waiting for it.
+   *
+   * `iterator.return()` does not merely signal: on an async generator it awaits
+   * whatever that generator is currently suspended on. For a member stuck in a
+   * provider read, that await is the very thing that hung — so `await
+   * iterator.return()` turned one deadline into two waits and the attempt ran for
+   * minutes after the timeout had already fired. The reported `277767 ms`
+   * TIMEOUT with an 8-second budget was this: detected at 8s, then blocked in
+   * cleanup.
+   *
+   * The fix has two halves, both needed:
+   * - `abort()` cancels the member's own request, which is what actually
+   *   unblocks the underlying socket;
+   * - `return()` is still called for adapters that hang their own hooks off it,
+   *   but its settlement is bounded and its failure ignored.
+   */
+  const release = async () => {
+    try {
+      abort?.()
+    } catch {
+      // Cancelling is best-effort; the verdict below is what matters.
+    }
+    try {
+      const closing = iterator.return?.()
+      if (closing !== undefined) {
+        await Promise.race([
+          Promise.resolve(closing).catch(() => {}),
+          new Promise(resolve => {
+            const timer = setTimeout(resolve, 1_000)
+            timer.unref?.()
+          }),
+        ])
+      }
+    } catch {
+      // A generator that throws on close is already gone.
+    }
+  }
   try {
     while (true) {
       if (signal?.aborted === true) {
-        await iterator.return?.().catch(() => {})
+        await release()
         settle({ kind: 'aborted' })
         return
       }
       if (idleTimeoutMs > 0 && Date.now() - lastProgressAt > idleTimeoutMs) {
         // The stream is still trickling, but has produced nothing for a whole
         // budget: treat it exactly like silence.
-        await iterator.return?.().catch(() => {})
+        await release()
         settle({ kind: 'failed', code: 'TIMEOUT', message: timeoutMessage() })
         return
       }
@@ -207,14 +241,13 @@ export async function* streamMember(stream, signal, idleTimeoutMs = 0, sink = {}
         ? await raceDeadline(iterator.next(), idleTimeoutMs)
         : { kind: 'value', value: await iterator.next() }
       if (step.kind === 'timeout') {
-        // The provider went quiet mid-stream. Settling the iterator lets the
-        // adapter release its own resources instead of leaking a socket.
-        await iterator.return?.().catch(() => {})
+        // The provider went quiet mid-stream.
+        await release()
         settle({ kind: 'failed', code: 'TIMEOUT', message: `超过 ${Math.round(idleTimeoutMs / 1000)} 秒没有收到任何数据` })
         return
       }
       if (step.kind === 'error') {
-        await iterator.return?.().catch(() => {})
+        await release()
         const code = codeOf(step.error)
         settle({ kind: 'failed', message: describe(step.error), ...(code === undefined ? {} : { code }) })
         return
@@ -890,6 +923,16 @@ export class RouterAdapter extends Adapter {
    * @param {boolean} mappingEnabled - translate the effort ladder onto this member.
    */
   async *#attempt(llm, member, options, idleTimeoutMs, mappingEnabled, sink) {
+    // One controller per attempt, so a timeout can cancel the member's own
+    // request instead of only walking away from it. DSH threads a signal into the
+    // provider call, and cancelling is what unblocks a socket mid-read: without it
+    // the attempt stops being *waited on* but the request keeps running, and the
+    // cleanup that follows (`iterator.return()`) blocks on that very read.
+    const controller = new AbortController()
+    const forwardAbort = () => controller.abort(options.signal?.reason)
+    if (options.signal?.aborted === true) controller.abort(options.signal.reason)
+    else options.signal?.addEventListener?.('abort', forwardAbort, { once: true })
+    const signal = controller.signal
     try {
       // Precedence for the effort: the member's own choice, then the tier's
       // default (already folded in by `tierChain`), then whatever the session
@@ -922,7 +965,7 @@ export class RouterAdapter extends Adapter {
       // the "超时没拦截" report. The same budget applies because from the user's
       // point of view both halves are "the model is not answering".
       const prepared = await withDeadline(
-        llm.prepareCall({ provider: member.provider, model: member.model, ...controls }, options.signal),
+        llm.prepareCall({ provider: member.provider, model: member.model, ...controls }, signal),
         idleTimeoutMs,
         () => `超过 ${Math.round(idleTimeoutMs / 1000)} 秒没有准备好请求`,
       )
@@ -948,12 +991,14 @@ export class RouterAdapter extends Adapter {
       // Stream through: once this member commits, its output reaches the caller
       // as it is produced, so the harness can measure real latency and
       // throughput instead of a single burst at the end.
-      for await (const chunk of streamMember(prepared.stream(forwarded), options.signal, idleTimeoutMs, sink)) {
+      for await (const chunk of streamMember(prepared.stream(forwarded), signal, idleTimeoutMs, sink, () => controller.abort())) {
         yield chunk
       }
     } catch (cause) {
       const code = codeOf(cause)
       sink.verdict = { kind: 'failed', message: describe(cause), ...(code === undefined ? {} : { code }) }
+    } finally {
+      options.signal?.removeEventListener?.('abort', forwardAbort)
     }
   }
 }
@@ -962,22 +1007,38 @@ export class RouterAdapter extends Adapter {
  * Whether one chunk proves the provider is still producing something.
  *
  * The distinction the watchdog needs: traffic is not progress. A gateway that
- * emits an empty delta or a bare usage row every second is "sending data" while
- * the user stares at a blank panel. Only a chunk that carries content — text,
- * reasoning, a tool call, a block boundary, or the terminal finish — resets the
- * clock.
+ * emits an empty delta every hundred milliseconds is "sending data" while the
+ * user stares at a blank panel, and an earlier version of this function counted
+ * those — it keyed off the chunk *type* alone, so a keepalive stream reset the
+ * clock forever and a 90-second budget never fired. That is why the fix has to be
+ * about payload, not shape.
  *
- * Deliberately generous, because a false timeout is worse than a slow answer:
- * one character counts, a block with empty text counts, and reasoning counts.
+ * Rules, in order of how much they matter:
+ *
+ * - A delta counts only when it carries non-whitespace text. An empty string is a
+ *   keepalive; one character is real work.
+ * - A tool-call delta counts only when it carries a name or non-empty arguments,
+ *   for the same reason.
+ * - A block boundary counts, because it is a real protocol event that only
+ *   happens when the model moves from one part of an answer to another.
+ * - The terminal `finish` counts, so a completed turn is never mistaken for a
+ *   stalled one.
+ * - Reasoning counts as fully as prose: a model that thinks for ten minutes is
+ *   producing deltas the whole time, and cheap models often answer in one
+ *   `block-end` with lengthier thinking than text.
+ *
  * @param {object} chunk - one stream chunk.
- * @returns {boolean} true when the chunk shows real work.
+ * @returns {boolean} true when the chunk carries content.
  */
 export function carriesProgress(chunk) {
   if (!chunk || typeof chunk !== 'object') return false
   switch (chunk.type) {
     case 'text-delta':
     case 'reasoning-delta':
+      return typeof chunk.text === 'string' && chunk.text.trim() !== ''
     case 'tool-call-delta':
+      return (typeof chunk.argumentsDelta === 'string' && chunk.argumentsDelta !== '')
+        || (typeof chunk.name === 'string' && chunk.name !== '')
     case 'block-start':
     case 'block-end':
     case 'finish':
