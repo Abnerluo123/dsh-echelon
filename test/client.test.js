@@ -283,19 +283,24 @@ test('detail blocks are collapsed unless opened', () => {
   assert.match(CSS, /\.mr-disclosure\[open\]/, 'the open state needs its own rule to rotate the chevron')
 })
 
-test('a collapsed disclosure shows only the chevron', () => {
+test('a collapsed disclosure still describes itself', () => {
   const { CSS } = loadBundle().__test
-  // The label and digest are in the DOM for accessibility, but a collapsed
-  // block must not paint them: the whole point is a compact one-row affordance.
-  assert.match(
+  // A chevron alone left a wide empty strip. The label and the current values
+  // stay visible while collapsed; only the inputs are hidden behind it.
+  assert.doesNotMatch(
     CSS,
     /\.mr-disclosure-meta\{[^}]*display:none/,
-    'the summary text must be hidden while collapsed',
+    'the summary text must stay visible while collapsed',
   )
   assert.match(
     CSS,
-    /\.mr-disclosure\[open\] \.mr-disclosure-meta\{[^}]*display:flex/,
-    'the summary text must reappear when opened',
+    /\.mr-disclosure-meta\{[^}]*display:flex/,
+    'the summary text is part of the collapsed row',
+  )
+  assert.match(
+    CSS,
+    /\.mr-disclosure-digest\{[^}]*text-overflow:ellipsis/,
+    'a long digest truncates instead of pushing the row wider',
   )
 })
 
@@ -310,24 +315,28 @@ test('the page root has a definite width', () => {
   assert.match(rule, /max-width:\s*760px/, 'and still caps itself')
 })
 
-test('an open disclosure sizes its summary to its content', () => {
+test('the summary row is never allowed to collapse to nothing', () => {
   const { CSS } = loadBundle().__test
-  // `width:auto` let the flex summary shrink to nothing once the meta row
-  // appeared; the label has to be able to push the row wider.
-  const rule = CSS.match(/\.mr-disclosure\[open\] > summary\{[^}]*\}/)[0]
-  assert.match(rule, /width:fit-content/, 'the open summary must size to its label')
-  assert.doesNotMatch(rule, /width:auto/, 'width:auto collapses a flex summary')
+  // Regression: a `width:auto` summary inside the column flex page shrank to
+  // zero and the whole row disappeared. The row now sizes itself to its text
+  // and is capped by the container, so neither extreme can happen.
+  const rules = [...CSS.matchAll(/\.mr-disclosure[^{]*\{[^}]*width:[^;}]+/g)].map(match => match[0])
+  assert.ok(rules.length > 0, 'the summary row declares a width')
+  for (const rule of rules) {
+    assert.doesNotMatch(rule, /width:\s*auto/, `width:auto collapses a flex row: ${rule}`)
+  }
 })
 
-test('the page is split into three tabs that partition the sections', async () => {
-  // Regression: the exposure and advanced cards once shared one tab, so the
-  // "配置" tab was a long scroll and settings were hard to find.
+test('the page is split into four tabs that partition the sections', async () => {
+  // Regression: the exposure card used to live on 配置 with the tier list, and
+  // the preview was buried under the settings form. Both made the page a scroll.
   const { DICT } = loadBundle().__test
-  for (const key of ['tabs.configure', 'tabs.settings', 'tabs.log']) {
+  for (const key of ['tabs.configure', 'tabs.settings', 'tabs.preview', 'tabs.log']) {
     assert.equal(typeof DICT.zh[key], 'string', `missing tab label ${key}`)
   }
   assert.equal(DICT.zh['tabs.configure'], '配置')
   assert.equal(DICT.zh['tabs.settings'], '设置')
+  assert.equal(DICT.zh['tabs.preview'], '预览')
 
   // Render and confirm each tab shows only its own cards.
   const exports = loadBundle()

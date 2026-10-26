@@ -124,6 +124,7 @@ window.__ModuleLoader__.load({
 
         'tabs.configure': '配置',
         'tabs.settings': '设置',
+        'tabs.preview': '预览',
         'tabs.log': '调用日志',
 
         'log.title': '调用日志',
@@ -246,6 +247,7 @@ window.__ModuleLoader__.load({
 
         'tabs.configure': 'Configure',
         'tabs.settings': 'Settings',
+        'tabs.preview': 'Preview',
         'tabs.log': 'Request log',
 
         'log.title': 'Request log',
@@ -380,23 +382,20 @@ window.__ModuleLoader__.load({
    settings scroller, which is what made the buttons cover the member text. */
 .mr-sticky-actions{position:static;margin-top:2px;background:transparent;border-top:1px solid var(--dsw-alias-border-l2);padding:12px 0 4px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .mr-tabs{display:flex;gap:4px;border-bottom:1px solid var(--dsw-alias-border-l2);padding-bottom:2px}
-/* Collapsible detail block. Collapsed it is a single chevron hugging the card
-   edge, so a member reads as two tight rows instead of a paragraph of summary
-   text. The label and current values appear once it is open, which is the only
-   moment they are worth the height. */
+/* Collapsible detail block. One compact row that still describes itself: a
+   bare chevron left a wide empty strip that said nothing about what it would
+   open. The label stays visible; the inputs stay hidden until asked for. */
 .mr-disclosure{border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2);overflow:hidden}
-.mr-disclosure > summary{display:flex;align-items:center;gap:6px;padding:3px 8px;cursor:pointer;list-style:none;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);user-select:none;width:fit-content;border-radius:6px}
+.mr-disclosure > summary{display:flex;align-items:center;gap:6px;padding:3px 8px;cursor:pointer;list-style:none;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);user-select:none;border-radius:6px}
 .mr-disclosure > summary::-webkit-details-marker{display:none}
 .mr-disclosure > summary:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .mr-disclosure > summary:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
 .mr-disclosure-chevron{flex:none;width:11px;text-align:center;transition:transform .15s ease;color:var(--dsw-alias-label-tertiary);font-size:13px}
 .mr-disclosure[open] .mr-disclosure-chevron{transform:rotate(90deg)}
-.mr-disclosure-meta{display:none;align-items:baseline;gap:6px;min-width:0}
-.mr-disclosure[open] .mr-disclosure-meta{display:flex}
-.mr-disclosure[open] > summary{width:fit-content;max-width:100%}
+.mr-disclosure-meta{display:flex;align-items:baseline;gap:6px;min-width:0;flex:1;overflow:hidden}
 .mr-disclosure-title{font-weight:500;color:var(--dsw-alias-label-primary);flex:none}
-.mr-disclosure-digest{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}
-.mr-disclosure-body{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:4px 12px 12px}
+.mr-disclosure-digest{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}
+.mr-disclosure-body{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:4px 12px 12px;border-top:1px solid var(--dsw-alias-border-l2)}
 .mr-disclosure-body.mr-plain{display:block;padding-top:10px}
 @media(prefers-reduced-motion:reduce){.mr-disclosure-chevron{transition:none}}
 .mr-tab{border:none;border-radius:8px 8px 0 0;background:transparent;padding:7px 14px;font-size:13px;color:var(--dsw-alias-label-secondary);cursor:pointer}
@@ -427,20 +426,27 @@ window.__ModuleLoader__.load({
      * drift apart.
      *
      * The split follows the questions a user actually arrives with:
-     *   配置 — what does my model picker look like? (tiers, exposure)
-     *   设置 — how should routing behave? (defaults, log retention, settings file)
+     *   配置 — which tiers exist and what's in them
+     *   设置 — how the router behaves (picker exposure, defaults, log retention)
+     *   预览 — what the model picker will look like, without touching the host
      *   调用日志 — what happened on that turn?
+     *
+     * 预览 is its own tab rather than the tail of 设置 because it is a *result*
+     * you check, not a knob you set: it is read-only, and burying it under the
+     * settings form made people scroll past it.
      */
     const TABS = [
       { id: 'configure', label: 'tabs.configure' },
       { id: 'settings', label: 'tabs.settings' },
+      { id: 'preview', label: 'tabs.preview' },
       { id: 'log', label: 'tabs.log' },
     ]
 
     /** The sections shown on one tab. */
     const SECTIONS = {
-      configure: ['tiers', 'exposure'],
-      settings: ['advanced'],
+      configure: ['tiers'],
+      settings: ['exposure', 'advanced'],
+      preview: ['preview'],
       log: [],
     }
 
@@ -542,7 +548,7 @@ window.__ModuleLoader__.load({
       return h('details', { className: 'mr-disclosure' },
         h('summary', { 'aria-label': name === '' ? undefined : name, title: name },
           h('span', { className: 'mr-disclosure-chevron', 'aria-hidden': 'true' }, '›'),
-          h('span', { className: 'mr-disclosure-meta', 'aria-hidden': 'true' },
+          h('span', { className: 'mr-disclosure-meta' },
             title === undefined ? null : h('span', { className: 'mr-disclosure-title' }, title),
             digest === undefined || digest === '' ? null : h('span', { className: 'mr-disclosure-digest' }, digest))),
         h('div', { className: plain === true ? 'mr-disclosure-body mr-plain' : 'mr-disclosure-body' }, children))
@@ -1162,7 +1168,7 @@ window.__ModuleLoader__.load({
             : null),
 
         // ── exposure ──
-        !shown('configure') ? null : h('section', { className: 'mr-card' },
+        !shown('settings') ? null : h('section', { className: 'mr-card' },
           h('h3', null, t('expose.title')),
           h('p', null, t('expose.hiding', { hidden: hiddenCounts.hidden, total: hiddenCounts.total })),
           tierOnlyBlocked ? h('div', { className: 'mr-note', role: 'status' }, t('expose.blocked')) : null,
@@ -1264,7 +1270,7 @@ window.__ModuleLoader__.load({
               }, copied ? t('options.copied') : t('options.copy'))))),
 
         // ── preview ──
-        !shown('settings') ? null : h('section', { className: 'mr-card' },
+        !shown('preview') ? null : h('section', { className: 'mr-card' },
           h('h3', null, t('preview.title')),
           h('div', { className: 'mr-preview' },
             h('div', { className: 'mr-preview-group' }, t('preview.tiers')),
@@ -1292,7 +1298,7 @@ window.__ModuleLoader__.load({
         // ── actions ──
         // Only on the settings tab: the log has its own refresh and clear, and a
         // Save that writes nothing from a read-only view is a trap.
-        shown('log') ? null : h('div', { className: 'mr-sticky-actions' },
+        !shown('configure') && !shown('settings') ? null : h('div', { className: 'mr-sticky-actions' },
           h('div', { className: 'mr-actions' },
             h('button', {
               type: 'button', className: 'mr-primary', disabled: saving || !dirtyRef.current,
