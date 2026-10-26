@@ -395,12 +395,44 @@ export class RouterAdapter extends Adapter {
    * because effort mapping needs them and a second lookup per attempt would
    * double the metadata calls for every turn.
    * @param {object} llm - the live LLM service.
+  /**
+   * The optional token meter, or undefined when the host has none.
+   *
+   * Must go through `ctx.get(...)`, not `ctx.tokenMeter`. Cordis guards service
+   * property access with the plugin's `inject` list, so an undeclared read throws
+   * `cannot get property "tokenMeter" without inject` — and because this runs on
+   * the dispatch path, that error ended every turn instead of falling back to the
+   * local heuristic. `get` is the explicit, unguarded accessor and returns
+   * undefined when the service is absent, which is exactly the contract wanted:
+   * the meter is an optimisation, never a requirement.
+   * @returns {object | undefined} the meter service.
+   */
+  #meter() {
+    try {
+      return this.ctx?.get?.('tokenMeter')
+    } catch {
+      return undefined
+    }
+  }
+
+  /**
+   * Resolve each member's real context window and order the chain by fit.
+   *
+   * Windows are resolved per turn rather than cached: a gateway can change what
+   * it advertises, and a stale window would route a large request into a small
+   * model for the rest of the process's life. The resolution is bounded (one
+   * `resolveModelInfo` per member).
+   *
+   * The same pass also attaches each member's advertised reasoning efforts,
+   * because effort mapping needs them and a second lookup per attempt would
+   * double the metadata calls for every turn.
+   * @param {object} llm - the live LLM service.
    * @param {Array<object>} chain - the tier's dispatch chain.
    * @param {object} options - the request about to be dispatched.
    * @returns {Promise<{ordered: Array<object>, skipped: Array<object>, estimate: number, fits: boolean}>} routing decision.
    */
   async #routeByContext(llm, chain, options) {
-    const estimate = estimateRequestTokens(options, this.ctx?.tokenMeter).inputTokens
+    const estimate = estimateRequestTokens(options, this.#meter()).inputTokens
     // Even a single-member chain needs its efforts, for mapping.
     const resolved = new Map()
     await Promise.all(chain.map(async member => {

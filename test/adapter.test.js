@@ -674,3 +674,45 @@ test('follow-session sends no effort at all', async () => {
   await collect(adapter, 'auto')
   assert.deepEqual(llm.seen, [undefined], 'an unset member leaves the choice to the session')
 })
+
+test('dispatch survives a context that guards undeclared services', async () => {
+  // Regression: the adapter read `this.ctx.tokenMeter`, which Cordis rejects —
+  // "cannot get property tokenMeter without inject" — because the plugin injects
+  // only `llm`. On the dispatch path that error ended every turn. The meter must
+  // be reached through `ctx.get`, the explicit accessor.
+  //
+  // The proxy below reproduces the guard exactly: `llm` is served (it IS
+  // injected), `get` is served (that is the escape hatch), and every other
+  // property throws the way Cordis does.
+  const llm = makeLlm({ models: { a: { models: [{ id: 'one' }] } }, routes: { 'a/one': [answer('survived the guard')] } })
+  const guarded = new Proxy({}, {
+    get(_target, name) {
+      if (name === 'llm') return llm
+      if (name === 'get') return key => (key === 'tokenMeter' ? { estimateMessage: () => 12 } : undefined)
+      if (typeof name === 'symbol') return undefined
+      throw new Error(`cannot get property "${String(name)}" without inject`)
+    },
+  })
+
+  const store = makeStore(tierSettings([{ provider: 'a', model: 'one' }]))
+  const adapter = new RouterAdapter({ store, logger: {} })
+  adapter.ctx = guarded
+
+  const chunks = await collect(adapter, 'auto')
+  assert.equal(finishOf(chunks).reason.kind, 'stop', 'the turn must not be ended by the inject guard')
+  assert.equal(
+    chunks.filter(chunk => chunk.type === 'text-delta').map(chunk => chunk.text).join(''),
+    'survived the guard',
+  )
+})
+
+test('a context without a meter still estimates', async () => {
+  // The meter is an optimisation: its absence must fall back to the local
+  // heuristic, never fail the turn.
+  const store = makeStore(tierSettings([{ provider: 'a', model: 'one' }]))
+  const adapter = new RouterAdapter({ store, logger: {} })
+  adapter.ctx = { llm: makeLlm({ models: { a: { models: [{ id: 'one' }] } }, routes: { 'a/one': [answer('ok')] } }) }
+  assert.equal(adapter.ctx.get, undefined, 'this ctx has no accessor at all')
+  const chunks = await collect(adapter, 'auto')
+  assert.equal(finishOf(chunks).reason.kind, 'stop')
+})
