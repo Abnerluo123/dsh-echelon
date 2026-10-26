@@ -73,12 +73,25 @@ export function apply(ctx) {
   // re-reads its catalog when the registry announces a change. Announce on a
   // save (immediately) and on a hand edit (picked up by the same mtime poll the
   // store uses for reads), so an edit is visible without a page reload.
+  //
+  // The signature covers everything the picker *renders*, not only what it hides.
+  // It used to carry ids and member counts, so renaming a tier — or changing which
+  // members make up the chain — left the menu showing the old name until a
+  // restart, which is what made "改配置要重启" feel true even after writes started
+  // notifying.
   let lastSignature
   const announce = () => {
     const { settings } = store.read()
     const signature = JSON.stringify([
       settings.exposure,
-      settings.tiers.map(tier => [tier.id, tier.enabled, tier.members.length]),
+      settings.showTierDescriptions,
+      settings.tiers.map(tier => [
+        tier.id,
+        tier.name,
+        tier.enabled,
+        tier.order,
+        tier.members.filter(member => member.enabled !== false).map(member => `${member.provider}/${member.model}`),
+      ]),
       settings.hide.map(rule => [rule.target, rule.enabled]),
     ])
     if (signature === lastSignature) return

@@ -13,7 +13,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
-import { RouterAdapter, commitsAnswer, runMember, tierReasoning } from '../src/adapter.js'
+import { RouterAdapter, carriesProgress, commitsAnswer, runMember, tierReasoning } from '../src/adapter.js'
 import { SettingsStore } from '../src/store.js'
 
 const directories = []
@@ -372,6 +372,109 @@ test('a deleted tier still resolves so a stored selection keeps rendering', asyn
   const info = await adapter.resolveModel('model-router', 'vanished')
   assert.equal(info.id, 'vanished')
   assert.equal(info.name, 'vanished')
+})
+
+test('traffic is not progress', () => {
+  // The watchdog used to reset on any chunk, so a gateway that pings every second
+  // while producing nothing kept the attempt alive forever — "几分钟没输出，超时
+  // 也没拦住". Only content counts now.
+  assert.equal(carriesProgress({ type: 'usage', usage: { inputTokens: 1 } }), false, 'a bare usage row is not progress')
+  assert.equal(carriesProgress({ type: 'reasoning-delta', text: '' }), true, 'empty reasoning still counts')
+  assert.equal(carriesProgress({ type: 'text-delta', text: '' }), true, 'even an empty delta came from the generator')
+  assert.equal(carriesProgress({ type: 'reasoning-delta', text: 'thinking' }), true)
+  assert.equal(carriesProgress({ type: 'text-delta', text: 'x' }), true)
+  assert.equal(carriesProgress({ type: 'tool-call-delta', argumentsDelta: '{}' }), true)
+  assert.equal(carriesProgress({ type: 'block-end', block: { type: 'text', text: '' } }), true)
+  assert.equal(carriesProgress({ type: 'finish', reason: { kind: 'stop' } }), true)
+  assert.equal(carriesProgress({ type: 'unknown-heartbeat' }), false)
+  assert.equal(carriesProgress(undefined), false)
+})
+
+test('a stream that only sends keepalives is abandoned as a timeout', async () => {
+  // A provider that emits usage rows forever never produces an answer, and the
+  // per-step deadline alone would never fire because each step arrives promptly.
+  async function* keepalive() {
+    for (let index = 0; index < 100; index += 1) {
+      await new Promise(resolve => setTimeout(resolve, 5))
+      yield { type: 'usage', usage: { inputTokens: index } }
+    }
+  }
+  const verdict = await runMember(keepalive(), undefined, 60)
+  assert.equal(verdict.kind, 'failed')
+  assert.equal(verdict.code, 'TIMEOUT')
+  assert.match(verdict.message, /没有进展/)
+})
+
+test('a slow but steady answer is never interrupted', async () => {
+  // The protection this watchdog must not break: a model that takes a long time
+  // in total but keeps producing is fine.
+  async function* slow() {
+    for (let index = 0; index < 6; index += 1) {
+      await new Promise(resolve => setTimeout(resolve, 20))
+      yield { type: 'text-delta', text: 'x' }
+    }
+    yield { type: 'block-end', block: { type: 'text', text: 'xxxxxx' } }
+    yield { type: 'finish', reason: { kind: 'stop', stopReason: 'end' } }
+  }
+  const verdict = await runMember(slow(), undefined, 80)
+  assert.equal(verdict.kind, 'answer', 'total duration exceeded the budget, but progress never stalled')
+})
+
+test('a member that hangs while preparing the call is abandoned, not waited on', async () => {
+  // The reported gap: `prepareCall` ran outside every deadline. A gateway that
+  // hangs while resolving capability or refreshing a token held the turn open
+  // with no failover and nothing in the log — minutes of silence. The idle budget
+  // must cover this half too, and the next member must still answer.
+  const store = makeStore(tierSettings([{ provider: 'hang', model: 'stuck', attempts: 0, idleTimeoutMs: 5_000 }, { provider: 'ok', model: 'fine', attempts: 0 }]))
+  const adapter = new RouterAdapter({ store, logger: {} })
+  const calls = []
+  const llm = {
+    listProviders: () => [{ id: 'hang' }, { id: 'ok' }],
+    resolveModelInfo: async (provider, model) => ({ provider, id: model, name: model }),
+    prepareCall: async config => {
+      calls.push(`${config.provider}/${config.model}`)
+      if (config.provider === 'hang') return await new Promise(() => {})
+      return {
+        config: { ...config },
+        stream: () => streamOf(answer('the other member answered')),
+      }
+    },
+  }
+  adapter.ctx = { llm }
+  const startedAt = Date.now()
+  const chunks = await collect(adapter, 'auto')
+  const elapsed = Date.now() - startedAt
+  assert.equal(finishOf(chunks).reason.kind, 'stop', 'the turn still answers')
+  // The member's own 5s budget (the minimum the UI allows) bounds the hang; before
+  // this fix the promise was awaited with no deadline at all.
+  assert.ok(elapsed >= 4_500 && elapsed < 9_000, `the hang was bounded by the member budget (took ${elapsed}ms)`)
+  assert.deepEqual(calls, ['hang/stuck', 'ok/fine'], 'the stuck member was abandoned and the chain walked on')
+  assert.equal(
+    chunks.filter(chunk => chunk.type === 'text-delta').map(chunk => chunk.text).join(''),
+    'the other member answered',
+  )
+})
+
+test('a hanging capability lookup degrades to unknown instead of stalling the turn', async () => {
+  // `resolveModelInfo` runs before any attempt is logged, so a member whose
+  // metadata lookup never settles hung the request with an empty log to show for
+  // it. Timing out there is not an error: unknown capabilities just mean the
+  // member stays a candidate.
+  const store = makeStore(tierSettings([{ provider: 'mute', model: 'meta', attempts: 0 }]))
+  const adapter = new RouterAdapter({ store, logger: {} })
+  const llm = {
+    listProviders: () => [{ id: 'mute' }],
+    resolveModelInfo: () => new Promise(() => {}),
+    prepareCall: async config => ({
+      config: { ...config },
+      stream: () => streamOf(answer('answered anyway')),
+    }),
+  }
+  adapter.ctx = { llm }
+  const startedAt = Date.now()
+  const chunks = await collect(adapter, 'auto')
+  assert.equal(finishOf(chunks).reason.kind, 'stop', 'the turn still answers')
+  assert.ok(Date.now() - startedAt < 10_000, 'the lookup was bounded')
 })
 
 test('runMember reports each terminal shape', async () => {

@@ -8,14 +8,17 @@ import {
   DEFAULT_ATTEMPTS,
   DEFAULT_IDLE_TIMEOUT_MS,
   MAX_ATTEMPTS,
+  MAX_IDLE_TIMEOUT_MS,
   MAX_TIERS,
   ROUTER_PROVIDER,
   exposureHidesStock,
+  formatTokenBudget,
   isHidden,
   isRetryable,
   normalizeMember,
   normalizeSettings,
   normalizeTier,
+  parseTokenBudget,
   retryDelay,
   tierChain,
   tierIdOf,
@@ -42,13 +45,55 @@ test('a member needs both halves of a route', () => {
   })
 })
 
+test('a token budget accepts the short forms people type', () => {
+  // The UI shows `128k`; a hand-edited settings file has to mean the same thing,
+  // or the two ways of writing one value would disagree.
+  assert.equal(parseTokenBudget(131_072), 131_072)
+  assert.equal(parseTokenBudget('131072'), 131_072)
+  assert.equal(parseTokenBudget('128k'), 128 * 1_024)
+  assert.equal(parseTokenBudget('128K'), 128 * 1_024)
+  assert.equal(parseTokenBudget('128 k'), 128 * 1_024)
+  assert.equal(parseTokenBudget('1m'), 1_048_576)
+  assert.equal(parseTokenBudget('1.5m'), 1_572_864)
+  // Binary, not decimal: a model advertising "1M context" means 1,048,576.
+  assert.notEqual(parseTokenBudget('1m'), 1_000_000)
+  assert.equal(parseTokenBudget(''), undefined)
+  assert.equal(parseTokenBudget('abc'), undefined)
+  assert.equal(parseTokenBudget('0'), undefined)
+  assert.equal(parseTokenBudget(-5), undefined)
+  assert.equal(parseTokenBudget(undefined), undefined)
+})
+
+test('a token budget is displayed in the shortest exact form', () => {
+  assert.equal(formatTokenBudget(131_072), '128k')
+  assert.equal(formatTokenBudget(1_048_576), '1m')
+  assert.equal(formatTokenBudget(1_000_000), '1000000', 'not a clean multiple, so it stays exact')
+  assert.equal(formatTokenBudget(100_000), '100000', 'not a multiple of 1024')
+  assert.equal(formatTokenBudget(undefined), '')
+  // A shown value must read back as the same number, or the field rewrites itself.
+  for (const tokens of [131_072, 1_048_576, 100_000, 32_768, 1_024, 4_000_000]) {
+    assert.equal(parseTokenBudget(formatTokenBudget(tokens)), tokens, `round-trip for ${tokens}`)
+  }
+})
+
+test('a short-form budget reaches the member and the tier', () => {
+  const member = normalizeMember({ provider: 'p', model: 'm', contextWindow: '128k', maxTokens: '1m' })
+  assert.equal(member.contextWindow, 131_072)
+  assert.equal(member.maxTokens, 1_048_576)
+  const tier = normalizeTier({ id: 't', name: 'T', contextWindow: '1m', members: [{ provider: 'p', model: 'm' }] })
+  assert.equal(tier.contextWindow, 1_048_576)
+  // The clamp still applies after parsing.
+  assert.equal(normalizeMember({ provider: 'p', model: 'm', contextWindow: '1' }).contextWindow, 1_024)
+  assert.equal(normalizeMember({ provider: 'p', model: 'm', contextWindow: '99m' }).contextWindow, 4_000_000)
+})
+
 test('member knobs are clamped instead of trusted', () => {
   assert.equal(normalizeMember({ provider: 'p', model: 'm', attempts: 99 }).attempts, MAX_ATTEMPTS)
   assert.equal(normalizeMember({ provider: 'p', model: 'm', attempts: -3 }).attempts, 0)
   assert.equal(normalizeMember({ provider: 'p', model: 'm', attempts: 'x' }).attempts, DEFAULT_ATTEMPTS)
   assert.equal(normalizeMember({ provider: 'p', model: 'm', idleTimeoutMs: 0 }).idleTimeoutMs, 0)
   assert.equal(normalizeMember({ provider: 'p', model: 'm', idleTimeoutMs: 1 }).idleTimeoutMs, 5000)
-  assert.equal(normalizeMember({ provider: 'p', model: 'm', idleTimeoutMs: 10 ** 9 }).idleTimeoutMs, 600_000)
+  assert.equal(normalizeMember({ provider: 'p', model: 'm', idleTimeoutMs: 10 ** 9 }).idleTimeoutMs, MAX_IDLE_TIMEOUT_MS)
 })
 
 test('duplicate members collapse onto the first occurrence', () => {

@@ -44,6 +44,15 @@ import { estimateRequestTokens, requestHasImage } from './tokens.js'
 /** How long a resolved model's metadata is reused, in milliseconds. */
 const INFO_TTL_MS = 30_000
 
+/**
+ * Ceiling on one metadata lookup, in milliseconds.
+ *
+ * Deliberately short and not user-configurable: this is a capability probe, not
+ * generation, so waiting longer than a few seconds means the lane is gone. A
+ * timeout degrades to "unknown capabilities" instead of failing the turn.
+ */
+const INFO_TIMEOUT_MS = 8_000
+
 /** How many member attempts one turn may spend before the chain is declared dead. */
 const MAX_ATTEMPTS_PER_TURN = 64
 
@@ -155,8 +164,26 @@ export async function* streamMember(stream, signal, idleTimeoutMs = 0, sink = {}
   let aborted
   let finished = false
   let usage
+  // Progress, not mere traffic, resets the watchdog.
+  //
+  // The per-step deadline below only bounds one `next()` call, so a gateway that
+  // sends a keepalive — an empty `text-delta`, a usage-only row, a heartbeat
+  // event — every few hundred milliseconds keeps every individual wait short and
+  // the attempt alive forever, with nothing on screen. That is precisely the
+  // "模型几分钟没输出，超时也没拦住" report. So a second clock measures time
+  // since the last chunk that actually *carries* something, and the same idle
+  // budget applies to it.
+  //
+  // What counts as progress is deliberately generous, because a false timeout is
+  // worse than a slow answer: any text or reasoning delta (even one character),
+  // any tool-call delta, any block boundary, and the terminal finish. A model that
+  // thinks for ten minutes is producing reasoning deltas and is therefore never
+  // interrupted. Long local tool execution is safe for a different reason: by the
+  // time a tool runs, the model call has already finished with a tool-call block,
+  // so this generator is no longer waiting on the provider at all.
+  let lastProgressAt = Date.now()
   const iterator = stream[Symbol.asyncIterator]()
-  const timeoutMessage = () => `超过 ${Math.round(idleTimeoutMs / 1000)} 秒没有收到任何数据`
+  const timeoutMessage = () => `超过 ${Math.round(idleTimeoutMs / 1000)} 秒没有进展（收到过空数据，但没有任何输出）`
   /** Settle the verdict exactly once. */
   const settle = verdict => {
     sink.verdict = verdict
@@ -169,6 +196,13 @@ export async function* streamMember(stream, signal, idleTimeoutMs = 0, sink = {}
         settle({ kind: 'aborted' })
         return
       }
+      if (idleTimeoutMs > 0 && Date.now() - lastProgressAt > idleTimeoutMs) {
+        // The stream is still trickling, but has produced nothing for a whole
+        // budget: treat it exactly like silence.
+        await iterator.return?.().catch(() => {})
+        settle({ kind: 'failed', code: 'TIMEOUT', message: timeoutMessage() })
+        return
+      }
       const step = idleTimeoutMs > 0
         ? await raceDeadline(iterator.next(), idleTimeoutMs)
         : { kind: 'value', value: await iterator.next() }
@@ -176,7 +210,7 @@ export async function* streamMember(stream, signal, idleTimeoutMs = 0, sink = {}
         // The provider went quiet mid-stream. Settling the iterator lets the
         // adapter release its own resources instead of leaking a socket.
         await iterator.return?.().catch(() => {})
-        settle({ kind: 'failed', code: 'TIMEOUT', message: timeoutMessage() })
+        settle({ kind: 'failed', code: 'TIMEOUT', message: `超过 ${Math.round(idleTimeoutMs / 1000)} 秒没有收到任何数据` })
         return
       }
       if (step.kind === 'error') {
@@ -188,6 +222,7 @@ export async function* streamMember(stream, signal, idleTimeoutMs = 0, sink = {}
       const row = step.value
       if (row.done === true) break
       const chunk = row.value
+      if (carriesProgress(chunk)) lastProgressAt = Date.now()
       // Bookkeeping runs before any commit short-circuit: a member that has
       // already emitted visible output still has to have its terminal `finish`
       // observed, or a good answer would be reported as a truncated stream.
@@ -261,6 +296,43 @@ export async function runMember(stream, signal, idleTimeoutMs = 0) {
   for await (const chunk of streamMember(stream, signal, idleTimeoutMs, sink)) chunks.push(chunk)
   const verdict = sink.verdict ?? { kind: 'failed', code: 'TRANSPORT', message: '数据流没有正常结束' }
   return verdict.kind === 'answer' ? { ...verdict, chunks } : verdict
+}
+
+/**
+ * Race one promise against a deadline.
+ *
+ * Used for the *pre-stream* half of an attempt. `streamMember` already bounds
+ * each `iterator.next()`, but `prepareCall` ran outside any deadline, so a member
+ * that hung while resolving its capability or refreshing a token held the turn
+ * open with no failover — which looks exactly like "the model died and the
+ * timeout never fired". The loser of the race is only abandoned, never
+ * awaited, because the point is to stop waiting, not to keep the turn open a
+ * little longer.
+ * @param {Promise<any>} promise - the work to bound.
+ * @param {number} ms - deadline in milliseconds; 0 or less disables it.
+ * @param {() => string} message - text for the timeout failure.
+ * @returns {Promise<any>} the promise's value, or a TIMEOUT rejection.
+ */
+function withDeadline(promise, ms, message) {
+  if (!(ms > 0)) return promise
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const error = new Error(message())
+      error.code = 'TIMEOUT'
+      reject(error)
+    }, ms)
+    timer.unref?.()
+    promise.then(
+      value => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      error => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
 }
 
 /**
@@ -502,6 +574,12 @@ export class RouterAdapter extends Adapter {
    * `context`, and neither can afford one metadata round-trip per member per
    * keystroke. The TTL is short on purpose: a gateway that starts advertising
    * vision should take effect within a turn or two, without a restart.
+   *
+   * The lookup is bounded. It runs *before* any attempt is logged, so a member
+   * whose `resolveModelInfo` never settles hung the whole turn with nothing in
+   * the log to explain it — the "几分钟没有任何输出、日志也是空的" report. A
+   * timeout here is not an error: it degrades to "unknown capabilities", which
+   * the router already handles (the member stays a candidate).
    * @param {object} llm - the live LLM service.
    * @param {{provider: string, model: string}} member - the member to resolve.
    * @param {AbortSignal} [signal] - cancellation.
@@ -514,7 +592,11 @@ export class RouterAdapter extends Adapter {
     if (hit !== undefined && now - hit.at < INFO_TTL_MS) return hit.info
     let info
     try {
-      info = await llm.resolveModelInfo?.(member.provider, member.model, signal)
+      info = await withDeadline(
+        Promise.resolve(llm.resolveModelInfo?.(member.provider, member.model, signal)),
+        INFO_TIMEOUT_MS,
+        () => `超过 ${Math.round(INFO_TIMEOUT_MS / 1000)} 秒没有查到模型能力`,
+      )
     } catch {
       info = undefined
     }
@@ -730,12 +812,26 @@ export class RouterAdapter extends Adapter {
         const outcome = sink.verdict ?? { kind: 'failed', code: 'TRANSPORT', message: '没有收到数据流' }
         if (outcome.kind === 'answer') {
           this.#logger.info?.(`model-router: tier "${tier.id}" answered with ${label}`)
-          turn.attempt({ provider: member.provider, model: member.model, attempt: attempt + 1, outcome: 'ok', durationMs: Date.now() - startedAt })
+          turn.attempt({
+            provider: member.provider,
+            model: member.model,
+            attempt: attempt + 1,
+            outcome: 'ok',
+            durationMs: Date.now() - startedAt,
+            ...(sink.effort === undefined ? {} : { effort: sink.effort }),
+          })
           turn.commit({
             outcome: 'ok',
             provider: member.provider,
             model: member.model,
             estimate: routed.estimate,
+            // What the tier asked for versus what the member actually received.
+            // The two differ whenever mapping translated the level, or dropped it
+            // because the member publishes none — which is exactly the thing a
+            // user opening the log is trying to find out.
+            ...(sink.requested === undefined ? {} : { requestedEffort: sink.requested }),
+            ...(sink.effort === undefined ? {} : { effort: sink.effort }),
+            ...(sink.effortDropped === true ? { effortDropped: true } : {}),
             ...(routed.vision === true ? { vision: true } : {}),
             ...(Number.isFinite(member.contextWindow) ? { contextWindow: member.contextWindow } : {}),
             ...(outcome.usage === undefined ? {} : { usage: usageOf([outcome.usage]) }),
@@ -805,9 +901,10 @@ export class RouterAdapter extends Adapter {
       // or undefined — never the requested name forwarded on a guess, because
       // DSH rejects an explicit effort the model does not declare. Mapping off is
       // the escape hatch for anyone who wants the raw value forwarded.
-      const effort = mappingEnabled
-        ? mapEffort(requested, member.efforts).effort
-        : requested
+      const mapped = mappingEnabled ? mapEffort(requested, member.efforts) : { effort: requested }
+      const effort = mapped.effort
+      sink.requested = requested
+      sink.effort = effort
       const maxTokens = member.maxTokens ?? options.maxTokens
       const controls = {
         ...(effort === undefined ? {} : { reasoningEffort: effort }),
@@ -815,9 +912,19 @@ export class RouterAdapter extends Adapter {
         ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
         ...(options.stop === undefined ? {} : { stop: options.stop }),
       }
-      const prepared = await llm.prepareCall(
-        { provider: member.provider, model: member.model, ...controls },
-        options.signal,
+      // The watchdog has to cover `prepareCall` too.
+      //
+      // `prepareCall` is where DSH resolves the member's capability and where an
+      // adapter performs its own network work (a gateway that refreshes a token,
+      // a catalog probe). It used to run with no deadline at all: the idle timer
+      // started only once `stream()` was entered, so a member that hung here held
+      // the turn open indefinitely — minutes of silence with no failover, which is
+      // the "超时没拦截" report. The same budget applies because from the user's
+      // point of view both halves are "the model is not answering".
+      const prepared = await withDeadline(
+        llm.prepareCall({ provider: member.provider, model: member.model, ...controls }, options.signal),
+        idleTimeoutMs,
+        () => `超过 ${Math.round(idleTimeoutMs / 1000)} 秒没有准备好请求`,
       )
       // A prepared call validates that the dispatched options restate its own
       // resolved config, so the forwarded request carries the resolved values
@@ -831,6 +938,13 @@ export class RouterAdapter extends Adapter {
         temperature: prepared.config.temperature,
         stop: prepared.config.stop,
       }
+      // Record what the adapter actually resolved, which can differ from what was
+      // asked for (a provider default materialized by `prepareCall`). "Requested
+      // but not sent" is the interesting case: it means mapping had to drop the
+      // level, and the member answered on its own default.
+      const forwardedEffort = prepared.config.reasoningEffort
+      sink.effort = forwardedEffort
+      sink.effortDropped = requested !== undefined && forwardedEffort === undefined
       // Stream through: once this member commits, its output reaches the caller
       // as it is produced, so the harness can measure real latency and
       // throughput instead of a single burst at the end.
@@ -841,6 +955,35 @@ export class RouterAdapter extends Adapter {
       const code = codeOf(cause)
       sink.verdict = { kind: 'failed', message: describe(cause), ...(code === undefined ? {} : { code }) }
     }
+  }
+}
+
+/**
+ * Whether one chunk proves the provider is still producing something.
+ *
+ * The distinction the watchdog needs: traffic is not progress. A gateway that
+ * emits an empty delta or a bare usage row every second is "sending data" while
+ * the user stares at a blank panel. Only a chunk that carries content — text,
+ * reasoning, a tool call, a block boundary, or the terminal finish — resets the
+ * clock.
+ *
+ * Deliberately generous, because a false timeout is worse than a slow answer:
+ * one character counts, a block with empty text counts, and reasoning counts.
+ * @param {object} chunk - one stream chunk.
+ * @returns {boolean} true when the chunk shows real work.
+ */
+export function carriesProgress(chunk) {
+  if (!chunk || typeof chunk !== 'object') return false
+  switch (chunk.type) {
+    case 'text-delta':
+    case 'reasoning-delta':
+    case 'tool-call-delta':
+    case 'block-start':
+    case 'block-end':
+    case 'finish':
+      return true
+    default:
+      return false
   }
 }
 

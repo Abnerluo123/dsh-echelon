@@ -48,12 +48,20 @@ export const MAX_ATTEMPTS = 5
 /** Default extra attempts per member when the row does not say. */
 export const DEFAULT_ATTEMPTS = 1
 
-/** Default idle timeout per attempt, in milliseconds. `0` disables it. */
-export const DEFAULT_IDLE_TIMEOUT_MS = 90_000
+/**
+ * Default idle timeout per attempt, in milliseconds. `0` disables it.
+ *
+ * Three minutes, not ninety seconds. The watchdog now also fires on "traffic but
+ * no progress", which makes it far more likely to trigger on a genuinely stuck
+ * lane — so it needs enough headroom for a slow first token from a big model
+ * behind a queue. Ninety seconds was short enough that a busy provider looked
+ * dead.
+ */
+export const DEFAULT_IDLE_TIMEOUT_MS = 180_000
 
-/** Accepted range for an idle timeout: 5s … 10min, or 0 for "wait forever". */
+/** Accepted range for an idle timeout: 5s … 15min, or 0 for "wait forever". */
 export const MIN_IDLE_TIMEOUT_MS = 5_000
-export const MAX_IDLE_TIMEOUT_MS = 600_000
+export const MAX_IDLE_TIMEOUT_MS = 900_000
 
 /**
  * Token budgets a member may declare: context window and output cap.
@@ -65,6 +73,50 @@ export const MAX_IDLE_TIMEOUT_MS = 600_000
  */
 export const MIN_TOKEN_BUDGET = 1_024
 export const MAX_TOKEN_BUDGET = 4_000_000
+
+/**
+ * Multipliers for the short forms a person types: `128k`, `1m`.
+ *
+ * Binary, not decimal: a model advertising "1M context" means 1,048,576 tokens,
+ * so `1m` has to mean that too. Reading it as 1e6 would put every override 4.8%
+ * below the real window — enough for a long session to be skipped for capacity
+ * that actually existed.
+ */
+const TOKEN_UNITS = Object.freeze({ '': 1, k: 1_024, m: 1_048_576 })
+
+/**
+ * Parse a token budget written by hand: `131072`, `128k`, `1m`, `1.5m`.
+ * @param {unknown} raw - the typed text.
+ * @returns {number | undefined} whole tokens, or undefined when unusable.
+ */
+export function parseTokenBudget(raw) {
+  if (typeof raw === 'number') return Number.isFinite(raw) && raw > 0 ? Math.round(raw) : undefined
+  if (typeof raw !== 'string') return undefined
+  // `128 k` and `128K` are the same intention as `128k`.
+  const match = /^\s*(\d+(?:\.\d+)?)\s*([km])?\s*$/i.exec(raw)
+  if (match === null) return undefined
+  const amount = Number(match[1])
+  if (!Number.isFinite(amount) || amount <= 0) return undefined
+  const unit = (match[2] ?? '').toLowerCase()
+  return Math.round(amount * TOKEN_UNITS[unit])
+}
+
+/**
+ * Render a token budget in its shortest honest form: `128k`, `1m`, `131072`.
+ *
+ * Only exact multiples are shortened, so the field never shows a rounded value
+ * that would be written back as a different number on the next save.
+ * @param {number | undefined} value - stored tokens.
+ * @returns {string} text for the field, or '' when unset.
+ */
+export function formatTokenBudget(value) {
+  if (!Number.isFinite(value) || value <= 0) return ''
+  const tokens = Math.round(value)
+  for (const [suffix, factor] of [['m', TOKEN_UNITS.m], ['k', TOKEN_UNITS.k]]) {
+    if (tokens % factor === 0) return `${tokens / factor}${suffix}`
+  }
+  return String(tokens)
+}
 
 /** Request-log retention. Bounded so a long-running host cannot grow forever. */
 export const DEFAULT_LOG_LIMIT = 200
@@ -185,14 +237,18 @@ export function normalizeMember(raw) {
  * `undefined` means "use whatever the model reports", which is the only honest
  * default: a number here is a *declaration about a model the plugin does not
  * own*, so it is clamped to a sane range rather than trusted.
+ *
+ * Accepts `"128k"` / `"1m"` as well as a number, so a hand-edited settings file
+ * can be written the way the UI shows it instead of in raw digits.
  * @param {'contextWindow' | 'maxTokens'} key - the field being read.
  * @param {unknown} value - stored value.
  * @returns {object} either `{}` or a one-key patch.
  */
 function tokenBudget(key, value) {
-  const parsed = Number(value)
-  if (value === undefined || value === null || value === '' || !Number.isFinite(parsed)) return {}
-  return { [key]: clamp(Math.trunc(parsed), MIN_TOKEN_BUDGET, MAX_TOKEN_BUDGET) }
+  if (value === undefined || value === null || value === '') return {}
+  const parsed = parseTokenBudget(value)
+  if (parsed === undefined) return {}
+  return { [key]: clamp(parsed, MIN_TOKEN_BUDGET, MAX_TOKEN_BUDGET) }
 }
 
 /** Clamp a number into an inclusive range. */

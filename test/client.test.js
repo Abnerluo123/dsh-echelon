@@ -203,7 +203,7 @@ test('timeout conversion round-trips and clamps', async () => {
   assert.equal(fromSeconds(0), 0)
   assert.equal(fromSeconds(-5), 0)
   assert.equal(fromSeconds(1), 5_000, 'a sub-5s timeout would fail every lane')
-  assert.equal(fromSeconds(10_000), 600_000)
+  assert.equal(fromSeconds(10_000), 900_000)
   assert.equal(fromSeconds(undefined), 0)
 })
 
@@ -390,6 +390,50 @@ test('the effort menu lists only the levels the model declares', async () => {
   assert.deepEqual(effortChoices(['high', 'high']), ['high'], 'no duplicates')
   assert.ok(!effortChoices(['low']).some(id => EFFORT_LADDER.includes(id) && id !== 'low'), 'no ladder is injected')
   assert.equal(effortMenu, undefined, 'no second, ladder-based menu may come back')
+})
+
+test('the bundle parses token budgets the same way the host does', async () => {
+  // Two copies of the same parser exist by necessity (one bundle, no host
+  // imports). This is the guard that they cannot drift: a `128k` typed in the
+  // page and a `128k` hand-edited into settings.json must mean one number.
+  const { parseTokens, formatTokens } = loadBundle().__test
+  const { parseTokenBudget, formatTokenBudget } = await import('../src/config.js')
+  for (const input of ['131072', '128k', '128K', '1m', '1.5m', '32k', '1000000']) {
+    assert.equal(parseTokens(input), parseTokenBudget(input), `parse ${input}`)
+  }
+  for (const tokens of [131_072, 1_048_576, 100_000, 32_768, 4_000_000]) {
+    assert.equal(formatTokens(tokens), formatTokenBudget(tokens), `format ${tokens}`)
+    assert.equal(parseTokens(formatTokens(tokens)), tokens, `round-trip ${tokens}`)
+  }
+  assert.equal(parseTokens(''), undefined)
+  assert.equal(parseTokens('abc'), undefined)
+})
+
+test('no field uses a native number spinner', async () => {
+  // The stepper is how a half-typed value gets rewritten: arrow keys and a wheel
+  // event over a focused number input both commit a different number. Every
+  // numeric field here is text with a numeric keypad hint instead.
+  const source = readFileSync(bundlePath, 'utf8')
+  // The comment explaining why `type: 'number'` is banned obviously contains the
+  // string; only a live JSX attribute would count as a violation.
+  const live = source.split('\n').filter(line => !/^\s*\*/.test(line) && !/^\s*\/\//.test(line))
+  assert.ok(
+    !live.some(line => /type:\s*'number'/.test(line)),
+    'no input may declare type=number',
+  )
+  assert.match(source, /inputMode:\s*'numeric'/, 'and the keypad hint survives for touch devices')
+  assert.match(source, /-webkit-inner-spin-button/, 'plus a CSS fallback for shells that render one anyway')
+})
+
+test('the request log names the tier, the model, and the level sent', async () => {
+  // The one question a tier makes unanswerable from the transcript: which real
+  // model answered, and at which reasoning level. The route line and the effort
+  // line are what the log exists for.
+  const source = readFileSync(bundlePath, 'utf8')
+  assert.match(source, /function effortLabel/, 'the effort line has its own helper')
+  assert.match(source, /requestedEffort/, 'the requested level reaches the page')
+  assert.match(source, /log\.effortMapped/, 'a translated level is shown as from → to')
+  assert.match(source, /log\.effortDropped/, 'a dropped level says so instead of looking unchanged')
 })
 
 test('a skipped member is labelled by its actual reason', async () => {

@@ -152,6 +152,15 @@ export class SettingsStore {
     }
     const stat = statSync(this.#file)
     this.#cache = { settings, mtimeMs: stat.mtimeMs, size: stat.size }
+    // Notify on write as well as on an observed external change.
+    //
+    // Without this, a save made through the plugin's own API produced no
+    // notification at all: `write` refreshed the cache, so the next `read` saw a
+    // matching mtime and returned early — the "changed document" branch that
+    // notifies was never reached. The picker therefore kept showing the previous
+    // tier list until the Harness was restarted, which read as "settings need a
+    // restart". The write path is the one place that knows for certain.
+    this.#notify()
     return { settings }
   }
 }

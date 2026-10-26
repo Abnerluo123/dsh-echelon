@@ -70,7 +70,7 @@ window.__ModuleLoader__.load({
         'member.attempts': '重试次数',
         'member.attemptsHint': '这个模型失败后再试几次才换下一个（0 = 不重试）。',
         'member.timeout': '超时',
-        'member.timeoutHint': '这么久没收到任何数据就换下一个。0 = 不限制。',
+        'member.timeoutHint': '这么久没有任何进展就换下一个。注意是「进展」不是「数据」：只发心跳、空包、计量行不算，会照常超时。模型的思考过程算进展；模型要等本地命令跑完时，请求已经结束不会有影响。0 = 不限制。',
         'member.timeoutUnit': '秒',
         'member.unlimited': '不限制',
         'member.effort': '思考强度',
@@ -169,6 +169,9 @@ window.__ModuleLoader__.load({
         'log.noVision': '无视觉',
         'log.noVisionMember': '挡位里没有能看图的成员',
         'log.dropped': '（另有 {n} 次尝试未显示）',
+        'log.effortDropped': '未发送档位（模型未声明）',
+        'log.effortSame': '档位 {level}',
+        'log.effortMapped': '档位 {from} → {to}',
 
         'preview.title': '预览：模型选择器会显示',
         'preview.stock': '其它模型',
@@ -215,7 +218,7 @@ window.__ModuleLoader__.load({
         'member.attempts': 'Retries',
         'member.attemptsHint': 'Extra tries on this model before failing over (0 = none).',
         'member.timeout': 'Timeout',
-        'member.timeoutHint': 'Fail over after this long with no data. 0 = no limit.',
+        'member.timeoutHint': 'Fail over after this long without progress. Progress, not traffic: keepalives, empty deltas and usage rows do not count, so a stalled lane still times out. Reasoning tokens do count, and a model waiting on a local command has already finished its request. 0 = no limit.',
         'member.timeoutUnit': 's',
         'member.unlimited': 'no limit',
         'member.effort': 'Reasoning',
@@ -314,6 +317,9 @@ window.__ModuleLoader__.load({
         'log.noVision': 'cannot see images',
         'log.noVisionMember': 'no image-capable member in this tier',
         'log.dropped': '({n} more attempts hidden)',
+        'log.effortDropped': 'no level sent (model declares none)',
+        'log.effortSame': 'level {level}',
+        'log.effortMapped': 'level {from} → {to}',
 
         'preview.title': 'Preview: the picker will show',
         'preview.stock': 'Other models',
@@ -391,6 +397,15 @@ window.__ModuleLoader__.load({
 .mr-field > span{font-size:12px;line-height:16px;color:var(--dsw-alias-label-secondary)}
 .mr-field .mr-input-row{display:flex;align-items:center;gap:6px}
 .mr-field .mr-input-row input{width:100%}
+/* No stepper arrows anywhere: a wheel event over a focused number field commits
+   a different value while the user is scrolling the panel, and the arrow keys
+   rewrite a half-typed number. These fields are plain text with a numeric
+   keypad hint. */
+input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;appearance:none;margin:0}
+input[type=number]{-moz-appearance:textfield;appearance:textfield}
+.mr-field input[inputmode]{font-variant-numeric:tabular-nums}
+/* A stored level the model no longer publishes is visible but flagged. */
+.mr-field select option[value].is-stale{color:var(--dsw-alias-state-warn-label,#9a6700)}
 .mr-field .mr-unit{font-size:12px;color:var(--dsw-alias-label-tertiary);flex:none}
 .mr-empty{border:1px dashed var(--dsw-alias-border-l2);border-radius:8px;padding:14px;text-align:center}
 .mr-radio{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;cursor:pointer;background:var(--dsw-alias-bg-layer-2)}
@@ -553,6 +568,39 @@ window.__ModuleLoader__.load({
     const EFFORT_LADDER = ['off', 'low', 'middle', 'high', 'xhigh']
 
     /**
+     * Parse `128k` / `1m` / `131072` into whole tokens.
+     *
+     * Mirrors `parseTokenBudget` in `src/config.js`, and for the same reason as
+     * {@link EFFORT_LADDER}: one bundle, no host imports. The multipliers are
+     * binary — "1M context" means 1,048,576 tokens, so `1m` has to mean that too.
+     * @param {string} raw - typed text.
+     * @returns {number | undefined} tokens, or undefined when unusable.
+     */
+    function parseTokens(raw) {
+      const match = /^\s*(\d+(?:\.\d+)?)\s*([km])?\s*$/i.exec(String(raw))
+      if (match === null) return undefined
+      const amount = Number(match[1])
+      if (!Number.isFinite(amount) || amount <= 0) return undefined
+      const unit = (match[2] ?? '').toLowerCase()
+      return Math.round(amount * (unit === 'k' ? 1024 : unit === 'm' ? 1048576 : 1))
+    }
+
+    /**
+     * Render tokens back in the shortest exact form: `128k`, `1m`, `131072`.
+     * Only exact multiples are shortened, so a displayed value never round-trips
+     * into a different number.
+     * @param {number | undefined} value - stored tokens.
+     * @returns {string} field text, or '' when unset.
+     */
+    function formatTokens(value) {
+      if (!Number.isFinite(value) || value <= 0) return ''
+      const tokens = Math.round(value)
+      if (tokens % 1048576 === 0) return `${tokens / 1048576}m`
+      if (tokens % 1024 === 0) return `${tokens / 1024}k`
+      return String(tokens)
+    }
+
+    /**
      * The levels to pin one member to: exactly what that model publishes.
      *
      * This is the *member* control, not the session picker, and the distinction
@@ -588,7 +636,7 @@ window.__ModuleLoader__.load({
     const fromSeconds = seconds => {
       const value = Math.round(Number(seconds))
       if (!Number.isFinite(value) || value <= 0) return 0
-      return Math.min(Math.max(value, 5), 600) * 1000
+      return Math.min(Math.max(value, 5), 900) * 1000
     }
 
     // ── controls ────────────────────────────────────────────────────────────
@@ -628,19 +676,38 @@ window.__ModuleLoader__.load({
         h('div', { className: plain === true ? 'mr-disclosure-body mr-plain' : 'mr-disclosure-body' }, children))
     }
 
-    /** A numeric input that reports `undefined` for an empty field. */
-    function NumberInput({ value, min, max, onChange, ariaLabel, unit }) {
-      const [draft, setDraft] = useState(String(value ?? ''))
-      useEffect(() => { setDraft(String(value ?? '')) }, [value])
+    /**
+     * A numeric input without spinner arrows.
+     *
+     * `type: 'number'` was actively hostile here: the browser's stepper rewrites
+     * the value on arrow keys and on scroll-wheel, which is how "I typed 90 and
+     * it jumped to 87" happens — a wheel event over the field silently commits a
+     * different number while the user is scrolling the panel. So the field is
+     * `text` with `inputMode="numeric"` (keeps the mobile keypad) and the arrows
+     * are suppressed in CSS as well, because some shells render a spinner for
+     * `inputmode` alone.
+     *
+     * An empty box means "unset", which is a real choice and not the same as
+     * zero, so the draft keeps the key absent rather than storing a sentinel.
+     */
+    function NumberInput({ value, min, max, onChange, ariaLabel, unit, placeholder }) {
+      const [draft, setDraft] = useState(value === undefined ? '' : String(value))
+      useEffect(() => { setDraft(value === undefined ? '' : String(value)) }, [value])
       return h('div', { className: 'mr-input-row' },
         h('input', {
-          type: 'number', min, max, value: draft, 'aria-label': ariaLabel,
+          type: 'text', inputMode: 'numeric', autoComplete: 'off', spellCheck: false,
+          value: draft, 'aria-label': ariaLabel, placeholder,
           onChange: event => {
-            setDraft(event.target.value)
-            const parsed = Number(event.target.value)
-            onChange(event.target.value === '' || !Number.isFinite(parsed) ? undefined : parsed)
+            const text = event.target.value.replace(/[^\d]/g, '')
+            setDraft(text)
+            if (text === '') { onChange(undefined); return }
+            const parsed = Number(text)
+            onChange(min === undefined && max === undefined ? parsed : Math.min(Math.max(parsed, min ?? 0), max ?? parsed))
           },
-          onBlur: () => { if (draft === '' || !Number.isFinite(Number(draft))) setDraft(String(value ?? '')) },
+          onBlur: () => {
+            const text = draft.trim()
+            if (text === '' || !Number.isFinite(Number(text))) setDraft(value === undefined ? '' : String(value))
+          },
         }),
         unit === undefined ? null : h('span', { className: 'mr-unit' }, unit))
     }
@@ -729,24 +796,44 @@ window.__ModuleLoader__.load({
     // ── member row ──────────────────────────────────────────────────────────
 
     /**
-     * A token-budget field that distinguishes "unset" from a number.
+     * A token budget written the way people say it: `128k`, `1m`, or plain
+     * digits.
      *
-     * An empty box means "whatever the model reports", which is a real choice
-     * and not the same as zero — so the draft keeps the key absent rather than
-     * storing a sentinel.
+     * A context window is 128000 or 1048576, and typing those digits by hand is
+     * an invitation to add or drop a zero. The field therefore accepts a suffix
+     * and shows the stored value back in the same short form, so "what I set" and
+     * "what I see" are the same string. Digits alone are still accepted, because
+     * that is what a copied value looks like.
+     *
+     * `k` is 1024 and `m` is 1048576 — binary multiples, because every model that
+     * advertises "1M context" means 1,048,576 tokens and rounding down to 1e6
+     * would file the override 4.8% short of the real window.
      */
-    function BudgetInput({ value, ariaLabel, placeholder, onChange }) {
-      const [draft, setDraft] = useState(value === undefined ? '' : String(value))
-      useEffect(() => { setDraft(value === undefined ? '' : String(value)) }, [value])
+    function TokenInput({ value, ariaLabel, placeholder, onChange }) {
+      const [draft, setDraft] = useState(formatTokens(value))
+      useEffect(() => { setDraft(formatTokens(value)) }, [value])
+      /** Commit whatever the box currently says. */
+      const commit = text => {
+        const trimmed = text.trim()
+        if (trimmed === '') { onChange(undefined); return }
+        const parsed = parseTokens(trimmed)
+        if (parsed === undefined) return
+        onChange(Math.min(Math.max(Math.round(parsed), 1_024), 4_000_000))
+      }
       return h('input', {
-        type: 'number', min: 1024, step: 1024, value: draft, 'aria-label': ariaLabel, placeholder,
-        onChange: event => {
-          setDraft(event.target.value)
-          const parsed = Number(event.target.value)
-          if (event.target.value.trim() === '' || !Number.isFinite(parsed)) { onChange(undefined); return }
-          onChange(Math.min(Math.max(Math.trunc(parsed), 1024), 4_000_000))
+        type: 'text', inputMode: 'text', autoComplete: 'off', spellCheck: false,
+        value: draft, 'aria-label': ariaLabel, placeholder,
+        onChange: event => setDraft(event.target.value),
+        // Commit on blur/Enter rather than per keystroke. Parsing "128" as the
+        // user types toward "128k" would store 128000, then 128000 again, and the
+        // rewrite loop is what makes a half-typed field jump.
+        onBlur: () => commit(draft),
+        onKeyDown: event => {
+          if (event.key !== 'Enter') return
+          event.preventDefault()
+          commit(draft)
+          event.currentTarget.blur()
         },
-        onBlur: () => { if (draft !== '' && !Number.isFinite(Number(draft))) setDraft(value === undefined ? '' : String(value)) },
       })
     }
 
@@ -819,7 +906,7 @@ window.__ModuleLoader__.load({
             })),
           h(Field, { label: t('member.timeout'), hint: t('member.timeoutHint') },
             h(NumberInput, {
-              value: toSeconds(member.idleTimeoutMs), min: 0, max: 600, unit: t('member.timeoutUnit'),
+              value: toSeconds(member.idleTimeoutMs), min: 0, max: 900, unit: t('member.timeoutUnit'),
               ariaLabel: t('member.timeout'),
               onChange: seconds => onChange({ ...member, idleTimeoutMs: seconds === undefined ? 90_000 : fromSeconds(seconds) }),
             })),
@@ -842,17 +929,17 @@ window.__ModuleLoader__.load({
               : null,
             efforts.map(effort => h('option', { key: effort, value: effort }, effort)))),
           h(Field, { label: t('member.context'), hint: t('member.contextHint') },
-            h(BudgetInput, {
+            h(TokenInput, {
               value: member.contextWindow, ariaLabel: t('member.context'),
-              placeholder: inheritedContext === undefined ? t('member.defaultAuto') : String(inheritedContext),
+              placeholder: inheritedContext === undefined ? t('member.defaultAuto') : formatTokens(inheritedContext),
               onChange: contextWindow => onChange(contextWindow === undefined
                 ? without('contextWindow')
                 : { ...member, contextWindow }),
             })),
           h(Field, { label: t('member.maxTokens') },
-            h(BudgetInput, {
+            h(TokenInput, {
               value: member.maxTokens, ariaLabel: t('member.maxTokens'),
-              placeholder: inheritedMax === undefined ? t('member.defaultAuto') : String(inheritedMax),
+              placeholder: inheritedMax === undefined ? t('member.defaultAuto') : formatTokens(inheritedMax),
               onChange: maxTokens => onChange(maxTokens === undefined ? without('maxTokens') : { ...member, maxTokens }),
             })),
           h(Field, { label: t('member.seesImages'), hint: t('member.seesImagesHint') },
@@ -905,7 +992,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'mr-member-knobs' },
 
           h(Field, { label: t('member.context'), hint: t('member.contextHint') },
-            h(BudgetInput, {
+            h(TokenInput, {
               value: tier.contextWindow, ariaLabel: `${tier.name} ${t('member.context')}`,
               placeholder: t('member.defaultAuto'),
               onChange: contextWindow => {
@@ -979,6 +1066,35 @@ window.__ModuleLoader__.load({
           : attempt.code === undefined ? null : h('span', null, attempt.code))
     }
 
+    /**
+     * The reasoning level as it left the router, shown only when it says
+     * something the route line does not.
+     *
+     * Three cases worth surfacing, in the user's own terms:
+     * - translated (`xhigh → max`): the tier asked for one thing and the member
+     *   heard another, which is the whole point of the mapping switch;
+     * - dropped: the member publishes no levels, so nothing was sent and the model
+     *   used its own default — the case that used to fail the call outright;
+     * - unchanged: still shown while the session has a level, because "which one
+     *   did it actually use" is the question the log exists to answer.
+     * @param {object} entry - one committed log entry.
+     * @returns {any} a span, or null when there is nothing to say.
+     */
+    function effortLabel(entry) {
+      const requested = entry.requestedEffort
+      const sent = entry.effort
+      if (requested === undefined && sent === undefined) return null
+      if (sent === undefined && entry.effortDropped === true) {
+        return h('span', { className: 'mr-log-usage' }, t('log.effortDropped'))
+      }
+      if (requested === undefined || sent === undefined) {
+        return h('span', { className: 'mr-log-usage' }, t('log.effortSame', { level: sent ?? requested }))
+      }
+      return h('span', { className: 'mr-log-usage' }, requested === sent
+        ? t('log.effortSame', { level: sent })
+        : t('log.effortMapped', { from: requested, to: sent }))
+    }
+
     /** One logged request: the outcome, the winner, and the chain behind it. */
     function LogRow({ entry }) {
       const outcome = entry.outcome
@@ -997,10 +1113,16 @@ window.__ModuleLoader__.load({
           h('strong', { style: { fontWeight: 500 } }, entry.tierName ?? entry.tier),
           entry.vision === true ? h('span', { className: 'mr-pill' }, t('log.vision')) : null,
           h('span', { className: 'mr-log-time' }, clock),
-          h('span', { className: 'mr-log-time' }, t('log.elapsed', { ms: entry.durationMs })),
-          entry.provider === undefined
-            ? null
-            : h('span', { className: 'mr-log-route' }, `${t('log.answered')} ${entry.provider}/${entry.model}`)),
+          h('span', { className: 'mr-log-time' }, t('log.elapsed', { ms: entry.durationMs }))),
+        // The route the turn actually took: the tier the user picked, then the
+        // real model that served it, then the reasoning level as it was translated
+        // on the way out. Three different vocabularies on one line — the tier name
+        // is the user's, the route is the provider's, the level may be neither.
+        h('div', { className: 'mr-log-head' },
+          h('span', { className: 'mr-log-route' }, entry.provider === undefined
+            ? `${entry.tierName ?? entry.tier} → ${t('log.failed')}`
+            : `${entry.tierName ?? entry.tier} → ${entry.provider}/${entry.model}`),
+          effortLabel(entry)),
         entry.usage === undefined
           ? null
           : h('span', { className: 'mr-log-usage' },
@@ -1328,7 +1450,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'mr-member-knobs' },
             h(Field, { label: t('options.timeout'), hint: t('options.timeoutHint') },
               h(NumberInput, {
-                value: toSeconds(settings.defaultIdleTimeoutMs), min: 0, max: 600, unit: t('units.sec'),
+                value: toSeconds(settings.defaultIdleTimeoutMs), min: 0, max: 900, unit: t('units.sec'),
                 ariaLabel: t('options.timeout'),
                 onChange: seconds => setDraft(current => ({ ...current, defaultIdleTimeoutMs: seconds === undefined ? 90_000 : fromSeconds(seconds) })),
               })),
@@ -1491,7 +1613,7 @@ window.__ModuleLoader__.load({
     exports.apply = apply
     exports.inject = inject
     exports.name = 'model-router'
-    exports.__test = { DICT, CSS, TABS, EFFORT_LADDER, effortChoices, skipReasonKey, makeTierId, fromSeconds, toSeconds, move, setHideRule }
+    exports.__test = { DICT, CSS, TABS, EFFORT_LADDER, effortChoices, skipReasonKey, makeTierId, fromSeconds, toSeconds, move, setHideRule, parseTokens, formatTokens }
     return module.exports
   },
 })

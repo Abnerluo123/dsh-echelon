@@ -119,6 +119,22 @@ test('a changed document notifies subscribers exactly once', () => {
   assert.equal(calls, 1, 'an unsubscribed listener is never called again')
 })
 
+test('a write through the API notifies subscribers', () => {
+  // Regression: `write` refreshed the cache, so the next `read` saw a matching
+  // mtime and returned early — the "document changed" branch that notifies was
+  // never reached. A save therefore produced no catalog refresh at all, and the
+  // picker kept showing the old tier list until the Harness was restarted. That
+  // is what "改配置要重启" was.
+  const { store } = makeStore()
+  store.write({ tiers: [{ id: 'a', name: 'A', members: [{ provider: 'p', model: 'm' }] }] })
+  let calls = 0
+  store.subscribe(() => { calls += 1 })
+  store.write({ tiers: [{ id: 'b', name: 'B', members: [{ provider: 'p', model: 'm' }] }] })
+  assert.equal(calls, 1, 'the write itself must announce the change')
+  store.read()
+  assert.equal(calls, 1, 'and the following read must not repeat it')
+})
+
 test('a throwing subscriber cannot break the store or starve other listeners', () => {
   const { store, file } = makeStore()
   store.write({ tiers: [{ id: 'a', name: 'A', members: [{ provider: 'p', model: 'm' }] }] })
