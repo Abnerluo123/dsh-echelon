@@ -342,8 +342,11 @@ window.__ModuleLoader__.load({
 .mr-root small{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
 .mr-head{display:flex;flex-direction:column;gap:8px}
 /* The title row owns its breathing room: a heading sitting 2px above a tab strip
-   reads as cramped, and the gap is the cheapest way to make the page composed. */
-.mr-page-head{padding:2px 0 4px}
+   reads as cramped, and the gap is the cheapest way to make the page composed.
+   The button is nudged down a little relative to the title's optical centre —
+   flush with the top edge it looked like it was falling out of the page. */
+.mr-page-head{padding:6px 0 6px;align-items:flex-start}
+.mr-page-head .mr-actions{margin-top:6px}
 .mr-card{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:16px}
 .mr-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .mr-spread{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
@@ -421,11 +424,14 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 .mr-option-id{font-family:var(--dsw-font-markdown-code-font-family,ui-monospace,monospace);font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mr-alert{border-radius:8px;padding:9px 11px;font-size:12px;line-height:18px;background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary);overflow-wrap:anywhere}
 .mr-note{border-radius:8px;padding:9px 11px;font-size:12px;line-height:18px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary)}
-/* The preview is the whole tab, so it claims the height instead of collapsing to
-   the length of the list and leaving a large empty card underneath it. */
-.mr-preview{display:flex;flex-direction:column;gap:6px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:12px 14px;background:var(--dsw-alias-bg-layer-2);overflow:auto;min-height:min(58vh,520px)}
-.mr-preview-card{gap:0}
-.mr-preview-block{display:flex;flex-direction:column;gap:4px;padding-top:6px}
+/* The card is already the frame, so the list inside it must not draw a second
+   one: a bordered, filled panel inset into a bordered, filled card read as a box
+   inside a box for no reason. The list keeps only what it needs — scrolling and
+   a minimum height, so the preview claims the tab instead of collapsing to a
+   short list above a large empty card. */
+.mr-preview{display:flex;flex-direction:column;gap:2px;overflow:auto;min-height:min(58vh,520px)}
+.mr-preview-card{gap:0;padding:14px 18px}
+.mr-preview-block{display:flex;flex-direction:column;gap:2px;padding-top:10px}
 .mr-preview-group{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--dsw-alias-label-tertiary);padding:8px 0 2px}
 .mr-preview-row{display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0}
 .mr-preview-row .mr-check{color:var(--dsw-alias-label-primary);flex:none;width:14px}
@@ -1668,10 +1674,12 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
         !shown('preview') ? null : h('section', { className: 'mr-card mr-preview-card' },
           h('div', { className: 'mr-preview' },
             h('div', { className: 'mr-preview-group' }, t('preview.tiers')),
+            // Name only. The member count was a number with no action attached:
+            // it did not tell you anything you could not see by opening the tier,
+            // and repeating it on every row made the list look like a to-do list.
             settings.tiers.filter(tier => tier.enabled !== false).map(tier => h('div', { key: tier.id, className: 'mr-preview-row' },
               h('span', { className: 'mr-check' }, ''),
-              h('span', null, tier.name),
-              h('small', null, `· ${tier.members.filter(member => member.enabled !== false).length}`))),
+              h('span', null, tier.name))),
             exposure === 'tiers'
               ? h('p', { className: 'mr-preview-note' }, t('preview.hiddenAll'))
               : catalog.map(group => {

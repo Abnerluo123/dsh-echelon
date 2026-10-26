@@ -1,6 +1,6 @@
 {
   "name": "dsh-echelon",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "Echelon for DeepSeek Harness: name a few tiers, and each one becomes an ordered chain of real models with retries, failover, reasoning-level translation, context-window routing and vision routing. 挡位式模型路由：按命名选模型，失败自动降级。",
   "license": "MIT",
   "type": "module",
