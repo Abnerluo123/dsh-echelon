@@ -1,0 +1,12 @@
+# dsh-model-router bundle patch.
+#
+# One insert row mounts the Host half; the browser half is declared by
+# `dsh.client` in package.json and binds to this same row name.
+#
+# Where this plugin sits in the composition matters only for the model catalog:
+# it must load after the LLM service exists, which `inject = ['llm']` already
+# guarantees. It never rewrites another plugin's routes.
+- insert:
+    - id: model-router
+      name: 'dsh-model-router'
+      config: {}

@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+pnpm-lock.yaml
+package-lock.json
+
+# Local scratch: throwaway debug harnesses, screenshots, ad-hoc scripts
+ego-verify/
+debug-*.mjs
+verify*.mjs
+*.log
+*.tmp
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

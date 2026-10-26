@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4C6FFF"/>
+      <stop offset="1" stop-color="#7B4CFF"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="116" height="116" rx="26" fill="url(#g)"/>
+  <!-- Three stacked lanes: the head of the chain and its failover backups. -->
+  <g fill="none" stroke="#fff" stroke-linecap="round" stroke-width="5">
+    <path d="M34 40h60" opacity="0.95"/>
+    <path d="M40 64h48" opacity="0.7"/>
+    <path d="M46 88h36" opacity="0.45"/>
+  </g>
+  <g fill="#fff">
+    <circle cx="94" cy="40" r="7"/>
+    <circle cx="40" cy="64" r="5.5" opacity="0.8"/>
+    <circle cx="82" cy="88" r="4.5" opacity="0.6"/>
+  </g>
+</svg>

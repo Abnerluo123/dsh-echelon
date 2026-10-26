@@ -1,0 +1,65 @@
+{
+  "name": "dsh-model-router",
+  "version": "1.0.0",
+  "description": "Model router for DeepSeek Harness: expose only your own named tiers to the model picker and dispatch each request down an ordered chain of real models with per-model retries, timeouts, and failover. 模型路由器：只暴露自定义挡位，按预设顺序调用真实模型，失败重试后自动降级到下一个。",
+  "license": "MIT",
+  "type": "module",
+  "main": "./index.js",
+  "icon": "icon.svg",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "model-router",
+    "failover",
+    "llm"
+  ],
+  "files": [
+    "index.js",
+    "client.js",
+    "src",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "README.en.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "engines": {
+    "node": ">=22.14.0",
+    "dsh": ">=0.2.0-rc.1"
+  },
+  "scripts": {
+    "test": "node --test test/",
+    "verify": "node scripts/verify-profile.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.0",
+    "@deepseek-ai/dsh-llm": ">=0.2.0-rc.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-llm": {
+      "optional": true
+    }
+  }
+}

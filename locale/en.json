@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Model Router",
+    "description": "Expose only the tiers you define, then dispatch each request down an ordered chain of real models with per-model retries, idle timeouts, and automatic failover."
+  }
+}
