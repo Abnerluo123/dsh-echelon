@@ -547,21 +547,19 @@ window.__ModuleLoader__.load({
     const EFFORT_LADDER = ['off', 'low', 'middle', 'high', 'xhigh']
 
     /**
-     * Build the effort menu: the whole ladder plus any extra names the member's
-     * model declares, so a gateway with its own vocabulary stays selectable.
+     * Build the effort menu from the levels the model actually declares.
      *
-     * Without the ladder a tier could only offer the levels its members happen to
-     * share — and when they share none, the menu was empty apart from "follow
-     * session", which is exactly the bug this replaces.
+     * It used to prepend this plugin's own five-rung ladder, which put Off/Low/
+     * Middle/High/Xhigh in front of models that speak Off/Low/High/Max — options
+     * that either do nothing or get silently translated into a neighbour. The
+     * model's own list is the only honest menu.
      * @param {Iterable<string>} [declared] - effort ids the member advertises.
      * @returns {string[]} option ids in display order.
      */
     function effortChoices(declared) {
-      const seen = new Set(EFFORT_LADDER)
-      const out = EFFORT_LADDER.slice()
+      const out = []
       for (const id of declared === undefined ? [] : [...declared]) {
-        if (typeof id !== 'string' || id === '' || seen.has(id)) continue
-        seen.add(id)
+        if (typeof id !== 'string' || id === '' || out.includes(id)) continue
         out.push(id)
       }
       return out
@@ -863,18 +861,6 @@ window.__ModuleLoader__.load({
       // Efforts any member of this tier publishes, union-ordered by the first
       // member that declares them: a tier default is only useful if at least one
       // member can honour it.
-      const tierEfforts = useMemo(() => {
-        const seen = []
-        for (const member of tier.members) {
-          const verdict = probe?.[`${member.provider}/${member.model}`]
-          const known = catalog.find(group => group.id === member.provider)
-            ?.models.find(model => model.id === member.model)
-          for (const effort of verdict?.efforts ?? known?.efforts ?? []) {
-            if (!seen.includes(effort)) seen.push(effort)
-          }
-        }
-        return seen
-      }, [tier.members, catalog, probe])
       return h('div', { className: `mr-tier${tier.enabled === false ? ' is-disabled' : ''}` },
         h('div', { className: 'mr-tier-head' },
           h('div', { className: 'mr-tier-name' },
@@ -906,19 +892,7 @@ window.__ModuleLoader__.load({
           ].join(' · '),
         },
         h('div', { className: 'mr-member-knobs' },
-          h(Field, { label: t('member.effort'), hint: t('member.effortHint') },
-            h('select', {
-              value: tier.reasoningEffort ?? '', 'aria-label': `${tier.name} ${t('member.effort')}`,
-              onChange: event => {
-                const { reasoningEffort: _drop, ...rest } = tier
-                onChange(event.target.value === '' ? rest : { ...rest, reasoningEffort: event.target.value })
-              },
-            },
-            h('option', { value: '' }, t('member.effortDefault')),
-            tier.reasoningEffort !== undefined && !effortChoices(tierEfforts).includes(tier.reasoningEffort)
-              ? h('option', { key: '__stored', value: tier.reasoningEffort }, tier.reasoningEffort)
-              : null,
-            effortChoices(tierEfforts).map(effort => h('option', { key: effort, value: effort }, effort)))),
+
           h(Field, { label: t('member.context'), hint: t('member.contextHint') },
             h(BudgetInput, {
               value: tier.contextWindow, ariaLabel: `${tier.name} ${t('member.context')}`,

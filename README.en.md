@@ -46,7 +46,7 @@ Every model names its reasoning levels differently — `minimal/low/medium/high`
 tier that could only offer the levels its members *share* often had nothing to
 offer, which is why the effort menu used to contain just "follow session".
 
-So the plugin owns one vocabulary and translates per member at dispatch:
+The picker shows **the model's own levels** (Off/Low/High/Max when that is what it declares). Only differing vocabularies between members need translation, and the plugin owns one internal vocabulary for that:
 
 ```
 off  <  low  <  middle  <  high  <  xhigh

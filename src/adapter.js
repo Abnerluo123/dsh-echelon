@@ -36,7 +36,7 @@ import {
   retryDelay,
   tierChain,
 } from './config.js'
-import { EFFORT_IDS, mapEffort, supportsLadder } from './effort.js'
+import { mapEffort } from './effort.js'
 import { RequestLog, usageOf } from './log.js'
 import { SettingsStore } from './store.js'
 import { estimateRequestTokens, requestHasImage } from './tokens.js'
@@ -414,14 +414,26 @@ export class RouterAdapter extends Adapter {
       .filter(window => Number.isInteger(window) && window > 0)
     const defaults = chain.map((member, index) => member.maxTokens ?? usable[index]?.defaultMaxTokens)
       .filter(tokens => Number.isSafeInteger(tokens) && tokens > 0)
-    // With mapping on, the tier can offer every rung of the ladder because each
-    // attempt translates to the member's own vocabulary. Without it, only the
-    // levels every member shares can be honoured.
-    const mapped = settings.effortMapping !== false
-      && supportsLadder(chain.map((member, index) => usable[index]?.reasoning?.efforts))
-    const efforts = mapped
-      ? { efforts: EFFORT_IDS.map(id => ({ id, name: id })), defaultEffort: EFFORT_IDS[2] }
-      : intersectEfforts(usable, chain)
+    // The tier advertises the levels the underlying model actually offers.
+    //
+    // Advertising this plugin's own ladder instead looked tidy in theory and
+    // wrong in the picker: the effort menu offered five rungs no model uses
+    // (Off/Low/Middle/High/Xhigh) instead of the model's real set (Off/Low/
+    // High/Max), and defaulted to "middle", which no provider names.
+    //
+    // Mapping still happens per member at dispatch, so picking one of the model's
+    // levels lands correctly on every member even when their vocabularies differ.
+    // When the first member declares nothing, the next one that does is used, so
+    // a silent head does not hide the levels of a capable fallback.
+    const declared = infos.map(info => info?.reasoning).find(reasoning => Array.isArray(reasoning?.efforts) && reasoning.efforts.length > 0)
+    const efforts = settings.effortMapping === false
+      ? intersectEfforts(usable, chain)
+      : declared === undefined
+        ? undefined
+        : {
+          efforts: declared.efforts.map(effort => ({ ...effort })),
+          ...(declared.defaultEffort === undefined ? {} : { defaultEffort: declared.defaultEffort }),
+        }
     return {
       ...base,
       inputModalities: allModalities(),

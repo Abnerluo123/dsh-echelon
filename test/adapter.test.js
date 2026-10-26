@@ -328,7 +328,7 @@ test('advertised tiers are ordered, enabled-only, and include the empty default'
   assert.deepEqual(models.map(model => model.name), ['快', '慢'])
 })
 
-test('a tier reports the largest member window and the full effort ladder', async () => {
+test('a tier reports the largest member window and the model effort levels', async () => {
   const { adapter } = wire(
     tierSettings([{ provider: 'a', model: 'big' }, { provider: 'b', model: 'small' }]),
     {
@@ -344,10 +344,12 @@ test('a tier reports the largest member window and the full effort ladder', asyn
   // that fits it. Reporting the smallest would throw away the big model's
   // capacity for every request.
   assert.equal(info.context.contextWindow, 1_000_000)
-  // With mapping on (the default) every rung is offered, because each attempt
-  // translates to the member's own vocabulary.
-  assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['off', 'low', 'middle', 'high', 'xhigh'])
-  assert.equal(info.reasoning.defaultEffort, 'middle')
+  // The head member declares low/medium/high; that is exactly what the picker
+  // shows, with the member's own default preserved. Advertising this plugin's
+  // ladder instead put Off/Low/Middle/High/Xhigh in front of a model that does
+  // not speak those names.
+  assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['low', 'medium', 'high'])
+  assert.equal(info.reasoning.defaultEffort, 'low')
 })
 
 test('a deleted tier still resolves so a stored selection keeps rendering', async () => {
@@ -432,7 +434,7 @@ test('a tier override applies to every member that does not set its own', async 
   // reported 200K, which is the point of the override), and `b` keeps its own
   // 32K. The tier advertises the largest of those effective windows.
   assert.equal(info.context.contextWindow, 100_000)
-  assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['off', 'low', 'middle', 'high', 'xhigh'])
+  assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['low', 'high'], 'the model declares only these')
 })
 
 test('a request too large for the head member routes to the one that fits', async () => {

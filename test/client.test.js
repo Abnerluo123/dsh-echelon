@@ -378,14 +378,15 @@ test('the page is split into four tabs that partition the sections', async () =>
 
 
 
-test('the browser ladder matches the host ladder', async () => {
-  // client.js ships as a standalone bundle and cannot import from src, so the
-  // ladder is declared twice. This keeps the two declarations honest.
-  const { EFFORT_LADDER } = await import('../src/effort.js')
-  const { effortChoices, EFFORT_LADDER: clientLadder } = loadBundle().__test
-  assert.deepEqual(clientLadder, EFFORT_LADDER.map(step => step.id))
-  assert.deepEqual(effortChoices([]), clientLadder, 'the menu always offers every rung')
-  assert.deepEqual(effortChoices(['turbo']).slice(-1), ['turbo'], 'a foreign name is appended, not replaced')
+test('the effort menu lists only the levels the model declares', async () => {
+  // Regression: the menu prepended this plugin's five-rung ladder, so a model
+  // offering Off/Low/High/Max was shown Off/Low/Middle/High/Xhigh — options that
+  // do nothing or get silently translated into a neighbour.
+  const { effortChoices, EFFORT_LADDER } = loadBundle().__test
+  assert.deepEqual(effortChoices(['low', 'high', 'max']), ['low', 'high', 'max'], 'exactly what the model says')
+  assert.deepEqual(effortChoices([]), [], 'a model that declares nothing offers nothing')
+  assert.deepEqual(effortChoices(['high', 'high']), ['high'], 'no duplicates')
+  assert.ok(!effortChoices(['low']).some(id => EFFORT_LADDER.includes(id) && id !== 'low'), 'no ladder is injected')
 })
 
 test('a skipped member is labelled by its actual reason', async () => {
