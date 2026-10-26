@@ -36,7 +36,7 @@ import {
   retryDelay,
   tierChain,
 } from './config.js'
-import { effortIds, mapEffort, snapEffort } from './effort.js'
+import { EFFORT_IDS, effortIds, mapEffort, snapEffort } from './effort.js'
 import { RequestLog, usageOf } from './log.js'
 import { SettingsStore } from './store.js'
 import { estimateRequestTokens, requestHasImage } from './tokens.js'
@@ -416,29 +416,30 @@ export class RouterAdapter extends Adapter {
       .filter(window => Number.isInteger(window) && window > 0)
     const defaults = chain.map((member, index) => member.maxTokens ?? usable[index]?.defaultMaxTokens)
       .filter(tokens => Number.isSafeInteger(tokens) && tokens > 0)
-    // A tier is a virtual model, so every level it advertises has to be one a
-    // real member publishes. DSH validates an explicit effort *before* any
-    // provider I/O and never clamps or aliases it, so an invented name is not a
-    // cosmetic problem: it is a rejected call. This plugin used to advertise its
-    // own ladder here, which put Off/Low/Middle/High/Xhigh in front of a model
-    // reading Off/Low/High/Max — and picking the invented rung failed the turn.
+    // What the picker shows depends on the mapping switch, because the two
+    // modes mean different things:
     //
-    // The menu therefore comes from upstream in both modes; the switch only
-    // decides how strict it has to be:
+    // - mapping ON: the user picks from this plugin's fixed ladder and every
+    //   selection is translated per member at dispatch. Showing the model's own
+    //   names here would defeat the point — the vocabulary would change per tier
+    //   and the switch would look like it did nothing.
+    // - mapping OFF: no translation happens, so the menu must list exactly what
+    //   the underlying model accepts, or a choice would be forwarded verbatim to
+    //   an endpoint that cannot honour it.
     //
-    // - mapping ON: the first member that declares levels names the menu, and
-    //   any chosen level is translated onto the other members at dispatch. One
-    //   published vocabulary is enough, and it stays recognisable in the picker.
-    // - mapping OFF: nothing is translated, so only levels *every* member
-    //   publishes can be offered; anything else would be forwarded verbatim and
-    //   rejected by whichever member does not know it.
+    // Both modes only ever advertise levels that some real member publishes, or
+    // (mapping on) this plugin's ladder whose every rung is translated — the
+    // fixed ladder is safe precisely because dispatch never forwards it as-is.
     const mapping = settings.effortMapping !== false
     const reasoning = tierReasoning(infos, chain, mapping)
     const offered = reasoning === undefined ? [] : reasoning.efforts.map(effort => effort.id)
-    // A pinned default is expressed on the ladder, so it has to land on one of
-    // the levels *this* tier advertises. `snapEffort` answers undefined when the
-    // pin cannot be honoured, and the model's own default takes over.
-    const pinned = settings.defaultEffort === undefined ? undefined : snapEffort(settings.defaultEffort, offered)
+    // A pinned default is expressed on the ladder. With mapping on the ladder is
+    // what the picker shows, so the pin can be used as-is; with it off the pin
+    // has to land on one of the levels *this* tier advertises, and the model's
+    // own default takes over when it cannot.
+    const pinned = settings.defaultEffort === undefined
+      ? undefined
+      : (mapping ? (offered.includes(settings.defaultEffort) ? settings.defaultEffort : undefined) : snapEffort(settings.defaultEffort, offered))
     const defaultEffort = pinned ?? reasoning?.defaultEffort
     const reported = reasoning === undefined
       ? undefined
@@ -854,20 +855,22 @@ function aborted(message) {
 }
 
 /**
- * The reasoning menu one tier should advertise, taken from the members themselves.
+ * The reasoning menu one tier should advertise.
  *
- * Never invents a level: DSH rejects an explicit effort the model does not
- * declare, before any provider I/O, so an unclaimed rung is a failed call.
+ * Two modes, two vocabularies — and one rule shared by both: a level that
+ * reaches dispatch must be one the answering member publishes, or the call is
+ * rejected before any provider I/O (`UNSUPPORTED_REASONING_EFFORT`).
  *
- * Two rules, one per mapping mode:
- *
- * - **on** — the first member (chain order) that declares levels names the menu.
- *   Every selection is translated onto the member that ends up answering, so a
- *   single published vocabulary is enough, and it is the vocabulary the user
- *   already knows from using that model directly.
- * - **off** — nothing is translated, so only the intersection may be offered:
- *   any level outside it would be forwarded verbatim and rejected by the member
- *   that does not know it.
+ * - **on** — this plugin's fixed ladder (`off/low/middle/high/xhigh`). Safe
+ *   *because* every rung is translated per member at dispatch, so the picker can
+ *   offer one stable vocabulary even when no two members agree on names. That is
+ *   the entire point of the switch; without it the menu would churn per tier.
+ *   A chain in which not one member declares levels advertises nothing: there is
+ *   nothing to translate onto, so every rung would be dropped silently and the
+ *   menu would be a row of settings that do nothing.
+ * - **off** — nothing is translated, so the menu must be the members' own levels
+ *   and nothing else. With several members that is the intersection; offering a
+ *   level outside it would send a value the member cannot honour.
  *
  * @param {Array<object | undefined>} infos - resolved member metadata, aligned with `chain`.
  * @param {Array<object>} [chain] - dispatch chain, whose `reasoningEffort` overrides narrow a member.
@@ -886,14 +889,22 @@ export function tierReasoning(infos, chain, mapping = true) {
   })
 
   if (mapping !== false) {
-    // A member-level pin is a dispatch detail, not a vocabulary: hiding the other
-    // levels here would leave the picker with a single option.
-    const index = declared.findIndex(ids => ids.length > 0)
-    if (index < 0) return undefined
-    const ids = declared[index]
-    const own = infos[index]?.reasoning?.defaultEffort
-    const defaultEffort = [own, agreedDefault(infos)].find(id => typeof id === 'string' && ids.includes(id))
-    return { efforts: ids.map(id => copyOf(pool, id)), ...(defaultEffort === undefined ? {} : { defaultEffort }) }
+    // The ladder is the vocabulary here, so a member-level pin is a dispatch
+    // detail: hiding the other rungs would leave the picker with one option.
+    //
+    // It is advertised even when no member declares anything. That is the whole
+    // contract of this mode — "one stable set of names, translated underneath" —
+    // and it is safe precisely because dispatch never forwards a rung as written:
+    // a member that publishes nothing gets no effort at all and uses its own
+    // default. Showing an empty menu instead would make the switch look broken
+    // on exactly the gateways and free lanes where it is most useful.
+    //
+    // Start from the head member's own default expressed on the ladder, so a
+    // fresh conversation opens on the level that model would have used anyway.
+    const own = declared.reduce((found, ids, index) => (found === undefined && ids.length > 0 ? infos[index]?.reasoning?.defaultEffort : found), undefined)
+    const onLadder = typeof own === 'string' ? mapEffort(own, EFFORT_IDS).effort : undefined
+    const defaultEffort = onLadder !== undefined && EFFORT_IDS.includes(onLadder) ? onLadder : 'high'
+    return { efforts: EFFORT_IDS.map(id => ({ id, name: id })), defaultEffort }
   }
 
   if (advertised.length === 0 || advertised.some(ids => ids.length === 0)) return undefined

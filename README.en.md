@@ -27,7 +27,7 @@ This is the least obvious part. Mixing unequal models in one chain hits three ob
 
 | Obstacle | What Echelon does |
 |---|---|
-| **Reasoning levels named differently** (`medium` / `max` / not declared) | The menu shows each model's own levels; the session's choice is translated per member before dispatch |
+| **Reasoning levels named differently** (`medium` / `max` / not declared) | One vocabulary `off / low / middle / high / xhigh`, translated per member at dispatch; a level that cannot land falls back to the member's own default |
 | **Different context windows** (1M beside 300K) | Advertises the **largest** window, then picks a member that fits this request |
 | **Different vision support** (multimodal beside text-only) | An image request skips members that cannot see |
 
@@ -64,8 +64,8 @@ Requires **DSH ≥ 0.2.0-rc.1** and **Node ≥ 22.14.0**. **Restart `dsh`** afte
 ## Advanced
 
 - **Per-member controls**: retries, timeout, reasoning effort, context window, max output, vision (force it for a model that supports images but does not declare them).
-- **Default level for new chats**: follow the model, or pin one of the five levels — one shared spelling, snapped onto the levels each tier's models actually publish.
-- **Reasoning mapping switch**: on translates the session's level onto the member that answers (nearest published level); off forwards it as written, so a member that does not publish it rejects the call. The menu itself always lists only the models' own levels — it never invents an `xhigh`.
+- **Default level for new chats**: follow the model, or pin one of the five levels.
+- **Reasoning mapping switch**: on means one five-level vocabulary in the picker, translated onto each member at dispatch (nearest published level, or the model's default when it publishes none); off shows each model's own levels and forwards them as written. The per-member control in the editor always offers only that model's own levels — it pins one member, so it must not name a level that member cannot honour.
 - **Selection strategy**: chain order (default) or most free space.
 - **Image routing**: pick a member that can see; only the current turn's image counts (an older image stops affecting selection).
 - **Request log**: who answered, every member tried, why each was skipped (with numbers), duration and tokens. In memory, switchable off.
@@ -119,7 +119,7 @@ Replace `desktop` with your profile name (`dsh profile list`).
 ## Development
 
 ```sh
-node --test test/               # 196 tests, no network needed
+node --test test/               # 197 tests, no network needed
 node scripts/verify-profile.mjs # can the current profile load this plugin?
 ```
 

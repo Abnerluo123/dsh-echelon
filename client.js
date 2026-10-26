@@ -134,9 +134,9 @@ window.__ModuleLoader__.load({
         'options.modalityRoutingHint': '请求带图片时，跳过不支持视觉的成员，避免图片被静默转成文字。',
         'options.defaultEffort': '新对话默认强度',
         'options.defaultEffortModel': '跟随模型',
-        'options.defaultEffortHint': '新开会话时预选的档位。五档是统一说法，会按每个挡位真正支持的档位（模型自己上报的那套）就近对齐；已存在的会话不受影响。',
+        'options.defaultEffortHint': '新开会话时预选的档位。开启映射时它就是选择器里的五档之一；关闭映射时会对齐到该挡位模型自己上报的档位。已存在的会话不受影响。',
         'options.effortMapping': '思考强度自动映射',
-        'options.effortMappingHint': '开启：选择器仍然只显示模型自己上报的档位；某个成员没有这个档位时，派发前自动换成它最接近的档位。关闭：原样转发，成员不支持时请求会被拒绝。',
+        'options.effortMappingHint': '开启：选择器统一显示 off / low / middle / high / xhigh，选中后按每个成员自己上报的档位翻译（成员没有这个档位就换成最接近的，完全没有就交给模型自己的默认）。关闭：直接显示模型自己上报的档位并原样转发。',
         'options.logging': '记录调用日志',
         'options.loggingHint': '只存在内存里，重启即清空。用来查这一轮到底用了哪个模型、为什么换掉前一个。',
         'options.logLimit': '保留条数',
@@ -279,9 +279,9 @@ window.__ModuleLoader__.load({
         'options.modalityRoutingHint': 'When a request carries an image, skip members that cannot see it instead of letting DSH flatten it to text.',
         'options.defaultEffort': 'Default level for new chats',
         'options.defaultEffortModel': 'Follow the model',
-        'options.defaultEffortHint': 'Pre-selected level when a conversation starts. The five names are one shared spelling; each tier snaps the choice onto the levels its models actually publish. Existing conversations are unaffected.',
+        'options.defaultEffortHint': 'Pre-selected level when a conversation starts. With mapping on it is one of the five levels the picker shows; with it off the choice is snapped onto what that tier\'s models publish. Existing conversations are unaffected.',
         'options.effortMapping': 'Map reasoning levels automatically',
-        'options.effortMappingHint': 'On: the picker still lists each model\'s own levels; when the member that answers does not publish the chosen level, it is translated to that member\'s nearest one first. Off: the value is forwarded as written, so a member that does not publish it rejects the call.',
+        'options.effortMappingHint': 'On: the picker shows off / low / middle / high / xhigh, and each selection is translated into the answering member\'s own level (nearest published one, or the model\'s default when it publishes none). Off: the model\'s own levels are shown and forwarded as written.',
         'options.logging': 'Record a request log',
         'options.loggingHint': 'In memory only; cleared by a restart. Shows which model served each turn and why earlier ones were dropped.',
         'options.logLimit': 'Entries kept',
@@ -553,15 +553,14 @@ window.__ModuleLoader__.load({
     const EFFORT_LADDER = ['off', 'low', 'middle', 'high', 'xhigh']
 
     /**
-     * Build the effort menu from the levels the model actually declares.
+     * The levels to pin one member to: exactly what that model publishes.
      *
-     * It used to prepend this plugin's own five-rung ladder, which put Off/Low/
-     * Middle/High/Xhigh in front of models that speak Off/Low/High/Max — levels
-     * the model never published, and which DSH rejects outright when they reach
-     * it. The mapping switch now only decides how a *session* level is translated
-     * onto a member (see `src/effort.js`); the menu itself is always what the
-     * model says about itself, so a member can never be pinned to a level it does
-     * not know.
+     * This is the *member* control, not the session picker, and the distinction
+     * is the whole point of the 1.4.1 correction. A session level may be the
+     * plugin's ladder, because dispatch translates it per member — but a value
+     * stored on a member is sent to that member as-is, so offering a level it
+     * never published would guarantee a rejected call. The model's own list is
+     * the only honest menu here.
      * @param {Iterable<string>} [declared] - effort ids the member advertises.
      * @returns {string[]} option ids in display order.
      */
