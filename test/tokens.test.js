@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { orderByContext } from '../src/config.js'
-import { estimateMessageTokens, estimateRequestTokens, fitsContext, inputBudgetFor, textTokens } from '../src/tokens.js'
+import { contentHasVisibleImage, currentTurnMessages, estimateMessageTokens, estimateRequestTokens, fitsContext, inputBudgetFor, requestHasImage, textTokens } from '../src/tokens.js'
 
 const text = body => [{ type: 'text', text: body }]
 const member = (provider, contextWindow, extra = {}) => ({ provider, model: 'm', attempts: 0, idleTimeoutMs: 1, ...(contextWindow === undefined ? {} : { contextWindow }), ...extra })
@@ -161,4 +161,46 @@ test('a requested output reserve shrinks what counts as fitting', () => {
   // 5000 input would fit a 10K window outright, but not once 6000 is reserved.
   assert.equal(orderByContext(chain, 5_000, undefined, {}).fits, true)
   assert.equal(orderByContext(chain, 5_000, undefined, { reserveOutput: 6_000 }).fits, false)
+})
+
+const img = (extra = {}) => ({ type: 'image', source: { kind: 'attachment', id: 'a1' }, ...extra })
+const msg = (role, content) => ({ role, content })
+
+test('an offloaded image no longer counts as an image', () => {
+  // DSH replaces offloaded images with a text placeholder before sending, so a
+  // text-only member can read that request. Counting it would keep excluding
+  // text members for an image that is not in the prompt any more.
+  assert.equal(contentHasVisibleImage([img()]), true)
+  assert.equal(contentHasVisibleImage([img({ offloaded: true })]), false)
+  assert.equal(contentHasVisibleImage([{ type: 'text', text: 'hi' }]), false)
+  assert.equal(contentHasVisibleImage(undefined), false)
+})
+
+test('the context scope sees an image anywhere in the conversation', () => {
+  const messages = [msg('user', [img()]), msg('assistant', [{ type: 'text', text: 'ok' }]), msg('user', [{ type: 'text', text: 'thanks' }])]
+  assert.equal(requestHasImage({ messages }, 'context'), true)
+})
+
+test('the recent scope ignores an image from an earlier turn', () => {
+  const messages = [msg('user', [img()]), msg('assistant', [{ type: 'text', text: 'ok' }]), msg('user', [{ type: 'text', text: 'thanks' }])]
+  assert.equal(requestHasImage({ messages }, 'recent'), false, 'the current turn is text only')
+})
+
+test('the recent scope still sees an image in the current turn', () => {
+  const messages = [msg('user', [{ type: 'text', text: 'earlier' }]), msg('assistant', [{ type: 'text', text: 'ok' }]), msg('user', [img()])]
+  assert.equal(requestHasImage({ messages }, 'recent'), true)
+})
+
+test('currentTurnMessages starts after the last assistant message', () => {
+  const messages = [msg('user', [{ type: 'text', text: 'a' }]), msg('assistant', [{ type: 'text', text: 'b' }]), msg('user', [{ type: 'text', text: 'c' }]), msg('tool', [{ type: 'text', text: 'd' }])]
+  assert.deepEqual(currentTurnMessages(messages).map(m => m.content[0].text), ['c', 'd'], 'tool results belong to the turn too')
+  // No assistant yet: the whole list is the current turn.
+  const first = [msg('user', [{ type: 'text', text: 'only' }])]
+  assert.deepEqual(currentTurnMessages(first).map(m => m.role), ['user'])
+})
+
+test('a screenshot in a tool result still requires vision', () => {
+  // A browser tool returns an image as a tool result, not as a user message.
+  const messages = [msg('user', [{ type: 'text', text: 'open it' }]), msg('assistant', [{ type: 'text', text: 'ok' }]), msg('tool', [img()])]
+  assert.equal(requestHasImage({ messages }, 'recent'), true, 'tool-result images count for the current turn')
 })

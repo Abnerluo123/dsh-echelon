@@ -994,3 +994,74 @@ test('several vision members keep chain order among themselves', async () => {
   assert.equal(entry.model, 'e1', 'the earlier of the vision members wins')
   assert.equal(entry.attempts.filter(attempt => attempt.code === 'NO_VISION').length, 2, 'both blind members are reported')
 })
+
+const HISTORY_WITH_OLD_IMAGE = [
+  { role: 'user', content: [{ type: 'image', source: { kind: 'attachment', id: 'old' } }, { type: 'text', text: '看这张图' }] },
+  { role: 'assistant', content: [{ type: 'text', text: '图里是一张桌子' }] },
+  { role: 'user', content: [{ type: 'text', text: '好，那帮我写代码' }] },
+]
+
+test('an image from an earlier turn stops forcing a vision member by default', async () => {
+  // The switch defaults to the current turn, so a picture discussed two turns
+  // ago no longer locks the session onto the expensive vision lane.
+  const { adapter, log } = wire(
+    tierSettings([{ provider: 'blind', model: 'one' }, { provider: 'eyes', model: 'two' }]),
+    {
+      models: {
+        blind: { models: [{ id: 'one', inputModalities: ['text'] }] },
+        eyes: { models: [{ id: 'two', inputModalities: ['text', 'image'] }] },
+      },
+      routes: { 'blind/one': [answer('blind')], 'eyes/two': [answer('eyes')] },
+    },
+  )
+  await collect(adapter, 'auto', { messages: HISTORY_WITH_OLD_IMAGE })
+  assert.equal(log.read().entries[0].provider, 'blind', 'the old image does not apply to this turn')
+})
+
+test('the context scope keeps the image in force for the whole conversation', async () => {
+  const store = makeStore({ ...tierSettings([{ provider: 'blind', model: 'one' }, { provider: 'eyes', model: 'two' }]), imageScope: 'context' })
+  const adapter = new RouterAdapter({ store, logger: {} })
+  adapter.ctx = { llm: makeLlm({
+    models: {
+      blind: { models: [{ id: 'one', inputModalities: ['text'] }] },
+      eyes: { models: [{ id: 'two', inputModalities: ['text', 'image'] }] },
+    },
+    routes: { 'blind/one': [answer('blind')], 'eyes/two': [answer('eyes')] },
+  }) }
+  await collect(adapter, 'auto', { messages: HISTORY_WITH_OLD_IMAGE })
+  assert.equal(adapter.requestLog.read().entries[0].provider, 'eyes', 'the stricter scope still skips the blind member')
+})
+
+test('an offloaded image does not exclude text-only members', async () => {
+  // DSH substitutes a placeholder for offloaded images, so the request a member
+  // receives has no image in it.
+  const { adapter, log } = wire(
+    tierSettings([{ provider: 'blind', model: 'one' }, { provider: 'eyes', model: 'two' }]),
+    {
+      models: {
+        blind: { models: [{ id: 'one', inputModalities: ['text'] }] },
+        eyes: { models: [{ id: 'two', inputModalities: ['text', 'image'] }] },
+      },
+      routes: { 'blind/one': [answer('blind')], 'eyes/two': [answer('eyes')] },
+    },
+  )
+  await collect(adapter, 'auto', {
+    messages: [{ role: 'user', content: [{ type: 'image', offloaded: true, source: { kind: 'attachment', id: 'x' } }, { type: 'text', text: '继续' }] }],
+  })
+  assert.equal(log.read().entries[0].provider, 'blind', 'the image is gone from the prompt')
+})
+
+test('a live image in the current turn still routes to the vision member', async () => {
+  const { adapter, log } = wire(
+    tierSettings([{ provider: 'blind', model: 'one' }, { provider: 'eyes', model: 'two' }]),
+    {
+      models: {
+        blind: { models: [{ id: 'one', inputModalities: ['text'] }] },
+        eyes: { models: [{ id: 'two', inputModalities: ['text', 'image'] }] },
+      },
+      routes: { 'blind/one': [answer('blind')], 'eyes/two': [answer('eyes')] },
+    },
+  )
+  await collect(adapter, 'auto', { messages: IMAGE_MESSAGE })
+  assert.equal(log.read().entries[0].provider, 'eyes', 'the scoping change must not disable vision routing')
+})

@@ -559,7 +559,7 @@ export class RouterAdapter extends Adapter {
    * @param {object} options - the request about to be dispatched.
    * @returns {Promise<{ordered: Array<object>, skipped: Array<object>, estimate: number, fits: boolean}>} routing decision.
    */
-  async #routeByContext(llm, chain, options, strategy, modalityRouting) {
+  async #routeByContext(llm, chain, options, strategy, modalityRouting, imageScope) {
     const estimate = estimateRequestTokens(options, this.#meter()).inputTokens
     // Even a single-member chain needs its efforts, for mapping.
     const resolved = new Map()
@@ -583,7 +583,7 @@ export class RouterAdapter extends Adapter {
     })
     // A request carrying an image must not land on a member DSH would flatten it
     // for: that is silent data loss, and it looks like the model "got dumber".
-    const vision = requestHasImage(options) && modalityRouting !== false
+    const vision = requestHasImage(options, imageScope) && modalityRouting !== false
     const split = modalityRouting === false ? { usable: enriched, skipped: [] } : splitByModality(enriched, vision)
     if (split.usable.length === 0) {
       // No member can see. Proceed with the whole chain anyway: DSH projects the
@@ -645,7 +645,7 @@ export class RouterAdapter extends Adapter {
     // any of them. A tier spans models with different windows, so the whole
     // point of advertising the largest one is that the dispatcher then routes by
     // size instead of letting a smaller member reject the prompt.
-    const routed = await this.#routeByContext(llm, chain, options, tier.contextStrategy, settings.modalityRouting)
+    const routed = await this.#routeByContext(llm, chain, options, tier.contextStrategy, settings.modalityRouting, settings.imageScope)
 
     const tried = []
     let budget = MAX_ATTEMPTS_PER_TURN

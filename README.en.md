@@ -128,6 +128,16 @@ Several gateways serve images without disclosing `inputModalities`, so they get 
 | Force: sees images | treat it as vision-capable even without a declaration |
 | Force: cannot see | never send it an image, even if it claims support |
 
+### Only this turn's image counts (on by default)
+
+The check used to look at the **whole conversation**, so one image attached early kept every later turn on a vision model. It now inspects only the **current turn's new inputs** (everything after the last assistant message, including tool results such as screenshots). Older images stop affecting selection, and the member that receives them gets a text placeholder instead.
+
+Turn off "Only this turn's image counts" under **Settings → Advanced** to keep the stricter rule.
+
+### Offloaded images do not count
+
+DSH replaces an offloaded image with a text placeholder before sending, so the prompt no longer contains an image and text-only members are eligible again.
+
 ### Which members are skipped for an image
 
 Only when the request actually carries an image **and** the switch is on:

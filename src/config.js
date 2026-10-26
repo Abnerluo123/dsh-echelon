@@ -325,6 +325,10 @@ export function normalizeSettings(raw) {
     // actually see it. Off means "keep chain order even if the image gets
     // flattened to text", which is only sensible for debugging.
     modalityRouting: source.modalityRouting !== false,
+    // Image scope: 'recent' inspects only the current turn's new inputs, so an
+    // image discussed three turns ago stops forcing a vision model. 'context'
+    // inspects the whole conversation, which is stricter but locks the session.
+    imageScope: source.imageScope === 'context' ? 'context' : 'recent',
   }
 }
 

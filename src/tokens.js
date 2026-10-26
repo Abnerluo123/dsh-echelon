@@ -141,23 +141,59 @@ export function fitsContext(member, inputTokens, reserveOutput) {
 }
 
 /**
- * Whether a request carries at least one image block.
+ * Whether one content block list carries an image the model must be able to read.
  *
- * Checked against the same shape DSH uses when it decides to project images into
- * text for a text-only model: any content block with `type: 'image'`. Finding one
- * is what lets the router pick a member that can actually see it instead of
- * letting the image be flattened to a placeholder.
- * @param {object} options - the generate options about to be dispatched.
- * @returns {boolean} true when the prompt contains an image.
+ * An **offloaded** image does not count. DSH's offload flow marks the block
+ * `offloaded: true` and substitutes a text placeholder before the request is
+ * sent, so by the time a model sees it there is no image left. Ignoring that flag
+ * would keep excluding text-only members for an image that is no longer there.
+ * @param {unknown} content - a message's content blocks.
+ * @returns {boolean} true when a live image block is present.
  */
-export function requestHasImage(options) {
-  const messages = Array.isArray(options?.messages) ? options.messages : []
-  for (const message of messages) {
-    const content = message?.content
-    if (!Array.isArray(content)) continue
-    for (const block of content) {
-      if (block !== null && typeof block === 'object' && block.type === 'image') return true
-    }
+export function contentHasVisibleImage(content) {
+  if (!Array.isArray(content)) return false
+  for (const block of content) {
+    if (block === null || typeof block !== 'object') continue
+    if (block.type !== 'image') continue
+    if (block.offloaded === true) continue
+    return true
   }
   return false
+}
+
+/**
+ * The messages that belong to the current turn.
+ *
+ * Everything after the last assistant message: the new user input plus any tool
+ * results it triggered (a browser screenshot arrives as a tool result, so
+ * "the latest user message" alone would miss it).
+ * @param {Array<object>} messages - the full request.
+ * @returns {Array<object>} the current turn's new inputs.
+ */
+export function currentTurnMessages(messages) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'assistant') return messages.slice(index + 1)
+  }
+  return messages
+}
+
+/**
+ * Whether a request needs a model that can see.
+ *
+ * Two scopes, because carrying an image has two very different lifetimes:
+ *
+ * - `context` — any image still in the conversation. Strictly correct, but a
+ *   single image attached early keeps every later turn on a vision model, even
+ *   when the new question is plain text.
+ * - `recent` — only the current turn's new inputs. Lets a cheap text model take
+ *   over once the image has been discussed; the older image is then flattened to
+ *   a placeholder by DSH for that member, which is a degradation, not a failure.
+ * @param {object} options - the generate options about to be dispatched.
+ * @param {'context' | 'recent'} [scope] - which messages to inspect.
+ * @returns {boolean} true when the request needs vision.
+ */
+export function requestHasImage(options, scope = 'context') {
+  const messages = Array.isArray(options?.messages) ? options.messages : []
+  const inspect = scope === 'recent' ? currentTurnMessages(messages) : messages
+  return inspect.some(message => contentHasVisibleImage(message?.content))
 }
