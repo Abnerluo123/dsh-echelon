@@ -76,7 +76,8 @@ window.__ModuleLoader__.load({
         'member.effort': '思考强度',
         'member.effortDefault': '跟随会话',
         'member.effortOff': '关闭思考',
-        'member.effortHint': '留空则跟随会话选择。选了具体档位，这个成员只用这个档位。',
+        'member.effortHint': '下拉里只有这个模型自己上报的档位。留空则跟随会话选择；选了具体档位，这个成员只用这个档位。',
+        'member.effortStale': '模型没上报',
         'member.context': '上下文长度',
         'tiers.strategy': '选人策略',
         'tiers.strategyOrder': '按顺序（第一个装得下的）',
@@ -133,9 +134,9 @@ window.__ModuleLoader__.load({
         'options.modalityRoutingHint': '请求带图片时，跳过不支持视觉的成员，避免图片被静默转成文字。',
         'options.defaultEffort': '新对话默认强度',
         'options.defaultEffortModel': '跟随模型',
-        'options.defaultEffortHint': '新开会话时预选的档位。选了具体档位会对齐到该挡位支持的档位；已存在的会话不受影响。',
+        'options.defaultEffortHint': '新开会话时预选的档位。五档是统一说法，会按每个挡位真正支持的档位（模型自己上报的那套）就近对齐；已存在的会话不受影响。',
         'options.effortMapping': '思考强度自动映射',
-        'options.effortMappingHint': '开启：选择器只显示 off / low / middle / high / xhigh，选中后自动翻译成每个模型自己的档位。关闭：直接显示模型自己上报的档位并原样转发。',
+        'options.effortMappingHint': '开启：选择器仍然只显示模型自己上报的档位；某个成员没有这个档位时，派发前自动换成它最接近的档位。关闭：原样转发，成员不支持时请求会被拒绝。',
         'options.logging': '记录调用日志',
         'options.loggingHint': '只存在内存里，重启即清空。用来查这一轮到底用了哪个模型、为什么换掉前一个。',
         'options.logLimit': '保留条数',
@@ -220,7 +221,8 @@ window.__ModuleLoader__.load({
         'member.effort': 'Reasoning',
         'member.effortDefault': 'Follow session',
         'member.effortOff': 'No reasoning',
-        'member.effortHint': 'Empty follows the session. A chosen level is the only one this member uses.',
+        'member.effortHint': 'The menu lists only what this model publishes. Empty follows the session; a chosen level is the only one this member uses.',
+        'member.effortStale': 'not published',
         'member.context': 'Context window',
         'tiers.strategy': 'Selection',
         'tiers.strategyOrder': 'Chain order (first that fits)',
@@ -277,9 +279,9 @@ window.__ModuleLoader__.load({
         'options.modalityRoutingHint': 'When a request carries an image, skip members that cannot see it instead of letting DSH flatten it to text.',
         'options.defaultEffort': 'Default level for new chats',
         'options.defaultEffortModel': 'Follow the model',
-        'options.defaultEffortHint': 'Pre-selected level when a conversation starts. A chosen level is snapped to what that tier offers; existing conversations are unaffected.',
+        'options.defaultEffortHint': 'Pre-selected level when a conversation starts. The five names are one shared spelling; each tier snaps the choice onto the levels its models actually publish. Existing conversations are unaffected.',
         'options.effortMapping': 'Map reasoning levels automatically',
-        'options.effortMappingHint': 'On: the picker shows off / low / middle / high / xhigh only, and each selection is translated into the model\'s own level. Off: the model\'s own levels are shown and forwarded as written.',
+        'options.effortMappingHint': 'On: the picker still lists each model\'s own levels; when the member that answers does not publish the chosen level, it is translated to that member\'s nearest one first. Off: the value is forwarded as written, so a member that does not publish it rejects the call.',
         'options.logging': 'Record a request log',
         'options.loggingHint': 'In memory only; cleared by a restart. Shows which model served each turn and why earlier ones were dropped.',
         'options.logLimit': 'Entries kept',
@@ -554,29 +556,15 @@ window.__ModuleLoader__.load({
      * Build the effort menu from the levels the model actually declares.
      *
      * It used to prepend this plugin's own five-rung ladder, which put Off/Low/
-     * Middle/High/Xhigh in front of models that speak Off/Low/High/Max — options
-     * that either do nothing or get silently translated into a neighbour. The
-     * model's own list is the only honest menu.
+     * Middle/High/Xhigh in front of models that speak Off/Low/High/Max — levels
+     * the model never published, and which DSH rejects outright when they reach
+     * it. The mapping switch now only decides how a *session* level is translated
+     * onto a member (see `src/effort.js`); the menu itself is always what the
+     * model says about itself, so a member can never be pinned to a level it does
+     * not know.
      * @param {Iterable<string>} [declared] - effort ids the member advertises.
      * @returns {string[]} option ids in display order.
      */
-    /**
-     * The levels to offer for one member, following the mapping switch.
-     *
-     * Mapping on: this plugin's ladder, because a selection is translated per
-     * member anyway and a stable vocabulary is the whole point.
-     * Mapping off: exactly what the model declares, because the value is then
-     * forwarded verbatim and anything else would be rejected.
-     * @param {Iterable<string>} [declared] - levels the model advertises.
-     * @param {boolean} mappingOn - the auto-mapping setting.
-     * @returns {string[]} option ids.
-     */
-    function effortMenu(declared, mappingOn) {
-      return mappingOn === false
-        ? effortChoices(declared)
-        : EFFORT_LADDER.slice()
-    }
-
     function effortChoices(declared) {
       const out = []
       for (const id of declared === undefined ? [] : [...declared]) {
@@ -764,14 +752,14 @@ window.__ModuleLoader__.load({
     }
 
     /** One member: route identity, its own knobs, and its place in the chain. */
-    function MemberRow({ member, index, total, catalog, probe, mappingOn, onChange, onMove, onRemove }) {
+    function MemberRow({ member, index, total, catalog, probe, onChange, onMove, onRemove }) {
       const known = catalog.find(group => group.id === member.provider)
         ?.models.find(model => model.id === member.model)
       const verdict = probe?.[`${member.provider}/${member.model}`]
       // Effort options come from the live probe when it has run (that is the
       // model's own declaration), falling back to the catalog entry.
       const declared = verdict?.efforts ?? known?.efforts ?? []
-      const efforts = effortMenu(declared, mappingOn)
+      const efforts = effortChoices(declared)
       const inheritedContext = verdict?.contextWindow ?? known?.contextWindow
       const inheritedMax = verdict?.maxTokens ?? known?.maxTokens
       /** Drop a key so the field falls back to "inherit". */
@@ -844,8 +832,14 @@ window.__ModuleLoader__.load({
                 : { ...member, reasoningEffort: event.target.value }),
             },
             h('option', { value: '' }, t('member.effortDefault')),
+            // A value saved before the model changed its levels stays visible so
+            // the user can change it, but it is marked: it is not something this
+            // model publishes, and dispatch will translate or drop it.
             member.reasoningEffort !== undefined && !efforts.includes(member.reasoningEffort)
-              ? h('option', { key: '__stored', value: member.reasoningEffort }, member.reasoningEffort)
+              ? h('option', { key: '__stored', value: member.reasoningEffort },
+                efforts.length === 0
+                  ? member.reasoningEffort
+                  : `${member.reasoningEffort}（${t('member.effortStale')}）`)
               : null,
             efforts.map(effort => h('option', { key: effort, value: effort }, effort)))),
           h(Field, { label: t('member.context'), hint: t('member.contextHint') },
@@ -878,10 +872,7 @@ window.__ModuleLoader__.load({
     // ── tier card ───────────────────────────────────────────────────────────
 
     /** One tier: name, enable state, ordering, and its member chain. */
-    function TierCard({ tier, index, total, catalog, probe, mappingOn, onChange, onMove, onRemove, onAddMember }) {
-      // Efforts any member of this tier publishes, union-ordered by the first
-      // member that declares them: a tier default is only useful if at least one
-      // member can honour it.
+    function TierCard({ tier, index, total, catalog, probe, onChange, onMove, onRemove, onAddMember }) {
       return h('div', { className: `mr-tier${tier.enabled === false ? ' is-disabled' : ''}` },
         h('div', { className: 'mr-tier-head' },
           h('div', { className: 'mr-tier-name' },
@@ -938,7 +929,7 @@ window.__ModuleLoader__.load({
           ? h('div', { className: 'mr-empty' }, h('p', null, t('tiers.membersEmpty')))
           : h('div', { className: 'mr-members' }, tier.members.map((member, memberIndex) => h(MemberRow, {
             key: `${member.provider}/${member.model}`,
-            member, index: memberIndex, total: tier.members.length, catalog, probe, mappingOn,
+            member, index: memberIndex, total: tier.members.length, catalog, probe,
             onChange: next => onChange({ ...tier, members: replaceAt(tier.members, memberIndex, next) }),
             onMove: delta => onChange({ ...tier, members: move(tier.members, memberIndex, delta) }),
             onRemove: () => onChange({ ...tier, members: tier.members.filter((_, position) => position !== memberIndex) }),
@@ -1259,7 +1250,7 @@ window.__ModuleLoader__.load({
           settings.tiers.length === 0
             ? h('div', { className: 'mr-empty' }, h('p', null, t('tiers.empty')))
             : settings.tiers.map((tier, index) => h(TierCard, {
-              key: tier.id, tier, index, total: settings.tiers.length, catalog, probe, mappingOn: settings.effortMapping !== false,
+              key: tier.id, tier, index, total: settings.tiers.length, catalog, probe,
               onChange: next => updateTier(index, next),
               onMove: delta => setDraft(current => ({ ...current, tiers: move(current.tiers, index, delta) })),
               onRemove: () => {

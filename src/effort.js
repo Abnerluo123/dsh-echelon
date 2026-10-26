@@ -4,28 +4,30 @@
  *
  * Every adapter names its levels differently: one ships `minimal/low/medium/high`,
  * another `off/low/high/max`, a third only `default/high`, and a fourth (a free
- * lane behind a gateway) declares nothing at all. A tier that has to intersect
+ * lane behind a gateway) declares nothing at all. A tier that had to intersect
  * those sets ends up offering nothing, which is why a tier's effort menu could
  * come up empty apart from "follow session".
  *
- * So the plugin owns one vocabulary and translates at dispatch:
+ * The menu itself comes from the models (see `tierReasoning` in `src/adapter.js`);
+ * this module only *translates* a level onto the member that is about to be
+ * dispatched:
  *
  *     off  <  low  <  middle  <  high  <  xhigh
  *
- * The user thinks in those five words. For each attempt the requested level is
- * translated to the nearest level the actual member advertises, preferring an
- * exact match, then the closest rank, then the higher of two equally close
- * levels (a tier asking for `high` on a model that only knows
+ * That ladder is a comparison scale, not a vocabulary to advertise. A requested
+ * level is translated to the nearest level the actual member publishes,
+ * preferring an exact match, then the closest rank, then the higher of two
+ * equally close levels (a tier asking for `high` on a model that only knows
  * `medium`/`xhigh` should not silently get the cheap one).
  *
- * Two rules keep this honest:
+ * One rule keeps that safe, and it is not negotiable:
  *
- * - **Unknown support passes through unchanged.** When a model declares no
- *   levels, the request is forwarded as written. Guessing here would replace a
- *   provider's own default with an invented one.
- * - **Mapping only translates inside the ladder.** A name the ladder does not
- *   recognise is forwarded as written too, so a gateway that invents `turbo`
- *   still works when the user types `turbo`.
+ * - **The result is either a level the member publishes, or nothing.** DSH
+ *   validates an explicit effort before any provider I/O and rejects a value the
+ *   model does not declare (`UNSUPPORTED_REASONING_EFFORT`) — it never clamps or
+ *   aliases. So forwarding an unknown name is not "leaving the provider's default
+ *   alone", it is a guaranteed failed call. When there is nothing to translate
+ *   against, the level is dropped and the member answers with its own default.
  *
  * @module src/effort.js
  */
@@ -100,7 +102,11 @@ export function effortIds(efforts) {
 }
 
 /**
- * Translate one requested level into a level the member actually supports.
+ * Translate one requested level into a level the member actually publishes.
+ *
+ * The return value is always safe to hand to `prepareCall`: either the id is one
+ * of the member's advertised ids, or the effort is `undefined` and the member
+ * applies its own default.
  *
  * @param {string | undefined} requested - what the user chose, in any spelling.
  * @param {unknown} supported - the member's advertised efforts, or undefined when unknown.
@@ -110,17 +116,18 @@ export function mapEffort(requested, supported) {
   if (requested === undefined) return { effort: undefined, mapped: false, reason: 'follow-session' }
   const ids = effortIds(supported)
   if (ids.length === 0) {
-    // Nothing to translate against: forward the request untouched rather than
-    // replacing the provider's default with a guess.
-    return { effort: requested, mapped: false, reason: 'unknown-support' }
+    // The member publishes no levels at all, so DSH would reject any explicit
+    // effort for it. Drop the request and let the model use its own default.
+    return { effort: undefined, mapped: true, reason: 'unknown-support' }
   }
   if (ids.includes(requested)) return { effort: requested, mapped: false, reason: 'exact' }
 
   const wanted = rankOf(requested)
   if (wanted === undefined) {
-    // A name outside the ladder belongs to the provider's own vocabulary; only
-    // an exact match could be honoured, and there was none.
-    return { effort: requested, mapped: false, reason: 'foreign-name' }
+    // A name outside the ladder is the provider's own vocabulary. It can only be
+    // honoured by an exact match, which there was not: sending it anyway would
+    // fail validation on this member.
+    return { effort: undefined, mapped: true, reason: 'foreign-name' }
   }
 
   let best
@@ -138,38 +145,25 @@ export function mapEffort(requested, supported) {
       bestDistance = distance
     }
   }
-  if (best === undefined) return { effort: requested, mapped: false, reason: 'no-ladder-match' }
+  if (best === undefined) {
+    // Nothing rankable to translate onto, and the name itself was not published.
+    return { effort: undefined, mapped: true, reason: 'no-ladder-match' }
+  }
   return { effort: best, mapped: best !== requested, reason: bestDistance === 0 ? 'same-rank' : 'nearest-rank' }
 }
 
 /**
- * The effort menu one tier should offer.
+ * The canonical level nearest to `wanted` among `ids`, or undefined.
  *
- * Always the whole ladder, plus any extra ids the members declare that the ladder
- * does not recognise — so a gateway with its own names stays usable, and the five
- * canonical words are always available regardless of what the models call things.
- * @param {Iterable<string>} [declared] - effort ids collected from the tier's members.
- * @returns {Array<{id: string, label?: string}>} options for a `<select>`.
+ * Used when the user pinned a default for new conversations: the pin is expressed
+ * on the ladder, and each tier has to advertise one of *its* levels instead.
+ * @param {string} wanted - a ladder id (or any spelling of one).
+ * @param {Iterable<string>} ids - levels the tier advertises.
+ * @returns {string | undefined} a declared id, or undefined when nothing matches.
  */
-export function effortOptions(declared) {
-  const seen = new Set(EFFORT_IDS)
-  const extra = []
-  for (const id of effortIds(declared === undefined ? [] : [...declared])) {
-    if (seen.has(id)) continue
-    seen.add(id)
-    extra.push(id)
-  }
-  return [...EFFORT_IDS.map(id => ({ id })), ...extra.map(id => ({ id }))]
-}
-
-/**
- * Whether a set of member effort lists can honour the whole ladder.
- *
- * Used by the picker's advertised efforts: with mapping on, a tier can offer every
- * rung as long as at least one member declares something rankable.
- * @param {Array<unknown>} lists - one advertised-effort list per member.
- * @returns {boolean} true when mapping can translate the ladder onto the members.
- */
-export function supportsLadder(lists) {
-  return lists.some(list => effortIds(list).some(id => rankOf(id) !== undefined))
+export function snapEffort(wanted, ids) {
+  const list = effortIds([...ids])
+  if (list.length === 0) return undefined
+  const result = mapEffort(wanted, list).effort
+  return result !== undefined && list.includes(result) ? result : undefined
 }

@@ -36,7 +36,7 @@ import {
   retryDelay,
   tierChain,
 } from './config.js'
-import { EFFORT_IDS, mapEffort } from './effort.js'
+import { effortIds, mapEffort, snapEffort } from './effort.js'
 import { RequestLog, usageOf } from './log.js'
 import { SettingsStore } from './store.js'
 import { estimateRequestTokens, requestHasImage } from './tokens.js'
@@ -380,9 +380,11 @@ export class RouterAdapter extends Adapter {
   /**
    * Resolve one tier's metadata.
    *
-   * The context window is the *smallest* input capacity among members, because a
-   * chain that advertises the head's 1M window hands a 128K fallback a request it
-   * cannot accept. Reasoning efforts are the intersection for the same reason.
+   * The context window is the *largest* input capacity among members: the
+   * dispatcher then routes each request to a member that fits it (see
+   * `routeByContext`). Reasoning levels are not capacity, though — they are a
+   * vocabulary, so they come from the members' own declarations rather than
+   * being intersected or invented (see `tierReasoning`).
    * @param {string} provider - the registered route.
    * @param {string} model - tier id.
    * @returns {Promise<object>} exact model info.
@@ -414,31 +416,33 @@ export class RouterAdapter extends Adapter {
       .filter(window => Number.isInteger(window) && window > 0)
     const defaults = chain.map((member, index) => member.maxTokens ?? usable[index]?.defaultMaxTokens)
       .filter(tokens => Number.isSafeInteger(tokens) && tokens > 0)
-    // What the picker shows depends on the mapping switch, because the two
-    // modes mean different things:
+    // A tier is a virtual model, so every level it advertises has to be one a
+    // real member publishes. DSH validates an explicit effort *before* any
+    // provider I/O and never clamps or aliases it, so an invented name is not a
+    // cosmetic problem: it is a rejected call. This plugin used to advertise its
+    // own ladder here, which put Off/Low/Middle/High/Xhigh in front of a model
+    // reading Off/Low/High/Max — and picking the invented rung failed the turn.
     //
-    // - mapping ON: the user picks from this plugin's fixed ladder and every
-    //   selection is translated per member at dispatch. Showing the model's own
-    //   names here would defeat the point — the vocabulary would change per tier
-    //   and the switch would look like it did nothing.
-    // - mapping OFF: no translation happens, so the menu must list exactly what
-    //   the underlying model accepts, or a choice would be forwarded verbatim to
-    //   an endpoint that cannot honour it.
+    // The menu therefore comes from upstream in both modes; the switch only
+    // decides how strict it has to be:
+    //
+    // - mapping ON: the first member that declares levels names the menu, and
+    //   any chosen level is translated onto the other members at dispatch. One
+    //   published vocabulary is enough, and it stays recognisable in the picker.
+    // - mapping OFF: nothing is translated, so only levels *every* member
+    //   publishes can be offered; anything else would be forwarded verbatim and
+    //   rejected by whichever member does not know it.
     const mapping = settings.effortMapping !== false
-    const declared = infos.map(info => info?.reasoning).find(reasoning => Array.isArray(reasoning?.efforts) && reasoning.efforts.length > 0)
-    const efforts = mapping
-      ? {
-        efforts: EFFORT_IDS.map(id => ({ id, name: id })),
-        // Start from the level the model itself prefers, expressed in ladder
-        // terms, unless the user pinned one. "high" is the fallback: it is the
-        // common naming and a middle-of-the-road choice when nothing is known.
-        defaultEffort: (() => {
-          const wanted = settings.defaultEffort ?? declared?.defaultEffort
-          const onLadder = wanted === undefined ? undefined : mapEffort(wanted, EFFORT_IDS).effort
-          return onLadder !== undefined && EFFORT_IDS.includes(onLadder) ? onLadder : 'high'
-        })(),
-      }
-      : intersectEfforts(usable, chain)
+    const reasoning = tierReasoning(infos, chain, mapping)
+    const offered = reasoning === undefined ? [] : reasoning.efforts.map(effort => effort.id)
+    // A pinned default is expressed on the ladder, so it has to land on one of
+    // the levels *this* tier advertises. `snapEffort` answers undefined when the
+    // pin cannot be honoured, and the model's own default takes over.
+    const pinned = settings.defaultEffort === undefined ? undefined : snapEffort(settings.defaultEffort, offered)
+    const defaultEffort = pinned ?? reasoning?.defaultEffort
+    const reported = reasoning === undefined
+      ? undefined
+      : { efforts: reasoning.efforts, ...(defaultEffort === undefined ? {} : { defaultEffort }) }
     return {
       ...base,
       inputModalities: allModalities(),
@@ -452,7 +456,7 @@ export class RouterAdapter extends Adapter {
       // Output is still the conservative number: a request may land on any
       // member, and claiming the largest output cap would overstate the floor.
       ...(defaults.length === 0 ? {} : { defaultMaxTokens: Math.min(...defaults) }),
-      ...(efforts === undefined ? {} : { reasoning: efforts }),
+      ...(reported === undefined ? {} : { reasoning: reported }),
     }
   }
 
@@ -796,8 +800,10 @@ export class RouterAdapter extends Adapter {
       // a member also caps that member's request.
       const requested = member.reasoningEffort ?? options.reasoningEffort
       // Translation happens here, per member, because "high" means a different
-      // id on every provider. Mapping off is the escape hatch for anyone who
-      // wants the raw value forwarded.
+      // id on every provider. The result is always an id this member publishes,
+      // or undefined — never the requested name forwarded on a guess, because
+      // DSH rejects an explicit effort the model does not declare. Mapping off is
+      // the escape hatch for anyone who wants the raw value forwarded.
       const effort = mappingEnabled
         ? mapEffort(requested, member.efforts).effort
         : requested
@@ -848,37 +854,81 @@ function aborted(message) {
 }
 
 /**
- * Reasoning efforts the whole chain can honour, in the first member's order.
+ * The reasoning menu one tier should advertise, taken from the members themselves.
  *
- * An override narrows the set rather than widening it: a member that declares
- * one effort offers only that, because asking it for anything else would be
- * rejected at dispatch. That keeps the picker's effort menu honest — everything
- * it offers works on every member.
- * @param {Array<object>} infos - resolved member metadata, index-aligned with the chain.
- * @param {Array<object>} [chain] - dispatch chain, when overrides are in play.
- * @returns {{efforts: Array<object>, defaultEffort?: string} | undefined} shared efforts, or undefined when none are shared.
+ * Never invents a level: DSH rejects an explicit effort the model does not
+ * declare, before any provider I/O, so an unclaimed rung is a failed call.
+ *
+ * Two rules, one per mapping mode:
+ *
+ * - **on** — the first member (chain order) that declares levels names the menu.
+ *   Every selection is translated onto the member that ends up answering, so a
+ *   single published vocabulary is enough, and it is the vocabulary the user
+ *   already knows from using that model directly.
+ * - **off** — nothing is translated, so only the intersection may be offered:
+ *   any level outside it would be forwarded verbatim and rejected by the member
+ *   that does not know it.
+ *
+ * @param {Array<object | undefined>} infos - resolved member metadata, aligned with `chain`.
+ * @param {Array<object>} [chain] - dispatch chain, whose `reasoningEffort` overrides narrow a member.
+ * @param {boolean} [mapping] - whether dispatch translates levels per member.
+ * @returns {{efforts: Array<object>, defaultEffort?: string} | undefined} what to advertise, or undefined when the chain claims nothing.
  */
-export function intersectEfforts(infos, chain) {
-  const lists = infos.map((info, index) => {
+export function tierReasoning(infos, chain, mapping = true) {
+  const pool = infos.flatMap(info => (Array.isArray(info?.reasoning?.efforts) ? info.reasoning.efforts : []))
+  const declared = infos.map(info => effortIds(info?.reasoning?.efforts))
+  const advertised = declared.map((ids, index) => {
     const override = chain?.[index]?.reasoningEffort
-    const declared = info.reasoning?.efforts
-    if (override !== undefined) {
-      // Honour the override only when the model actually publishes it; an
-      // unverified effort would fail every request that selects it.
-      const known = Array.isArray(declared) ? declared.find(effort => effort.id === override) : undefined
-      return known === undefined ? [] : [{ ...known }]
-    }
-    return Array.isArray(declared) && declared.length > 0 ? declared : []
+    if (override === undefined) return ids
+    // A member pinned to one level offers only that level: every other value
+    // would be replaced at dispatch, so advertising it would lie.
+    return ids.includes(override) ? [override] : []
   })
-  if (lists.length === 0 || lists.some(list => list.length === 0)) return undefined
-  const [first, ...rest] = lists
-  const shared = first.filter(effort => rest.every(list => list.some(candidate => candidate.id === effort.id)))
+
+  if (mapping !== false) {
+    // A member-level pin is a dispatch detail, not a vocabulary: hiding the other
+    // levels here would leave the picker with a single option.
+    const index = declared.findIndex(ids => ids.length > 0)
+    if (index < 0) return undefined
+    const ids = declared[index]
+    const own = infos[index]?.reasoning?.defaultEffort
+    const defaultEffort = [own, agreedDefault(infos)].find(id => typeof id === 'string' && ids.includes(id))
+    return { efforts: ids.map(id => copyOf(pool, id)), ...(defaultEffort === undefined ? {} : { defaultEffort }) }
+  }
+
+  if (advertised.length === 0 || advertised.some(ids => ids.length === 0)) return undefined
+  const [first, ...rest] = advertised
+  const shared = first.filter(id => rest.every(ids => ids.includes(id)))
   if (shared.length === 0) return undefined
-  const defaults = infos.map(info => info.reasoning?.defaultEffort).filter(value => typeof value === 'string')
-  const defaultEffort = defaults.length === infos.length && shared.some(effort => effort.id === defaults[0])
-    ? defaults[0]
-    : shared[0].id
-  return { efforts: shared.map(effort => ({ ...effort })), defaultEffort }
+  const agreed = agreedDefault(infos)
+  const defaultEffort = agreed !== undefined && shared.includes(agreed) ? agreed : shared[0]
+  return { efforts: shared.map(id => copyOf(pool, id)), defaultEffort }
+}
+
+/**
+ * The declared entry for one id, so names and descriptions survive.
+ * @param {Array<object | string>} efforts - every declaration seen in the chain.
+ * @param {string} id - the id to copy.
+ * @returns {{id: string, name: string}} an entry DSH will accept.
+ */
+function copyOf(efforts, id) {
+  const found = efforts.find(effort => (typeof effort === 'string' ? effort : effort?.id) === id)
+  if (typeof found === 'string') return { id: found, name: found }
+  // DSH rejects an effort without a non-empty name, so a bare `{id}` is not an
+  // option here even though the id is what gets dispatched.
+  if (found === undefined || typeof found.name !== 'string' || found.name === '') return { id, name: id }
+  return { id, name: found.name, ...(typeof found.description === 'string' ? { description: found.description } : {}) }
+}
+
+/**
+ * The default level every member agrees on, when they all publish one.
+ * @param {Array<object | undefined>} infos - resolved member metadata.
+ * @returns {string | undefined} the shared default, or undefined.
+ */
+function agreedDefault(infos) {
+  const defaults = infos.map(info => info?.reasoning?.defaultEffort)
+  if (defaults.length === 0 || defaults.some(value => typeof value !== 'string')) return undefined
+  return defaults.every(value => value === defaults[0]) ? defaults[0] : undefined
 }
 
 /**

@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { EFFORT_IDS, EFFORT_LADDER, effortIds, effortOptions, mapEffort, rankOf, supportsLadder } from '../src/effort.js'
+import { EFFORT_IDS, EFFORT_LADDER, effortIds, mapEffort, rankOf, snapEffort } from '../src/effort.js'
 
 const list = (...ids) => ids.map(id => ({ id, name: id }))
 
@@ -73,23 +73,45 @@ test('off maps to the lowest level when the model cannot switch reasoning off', 
   assert.equal(mapEffort('off', list('off', 'high')).effort, 'off')
 })
 
-test('unknown support forwards the request unchanged', () => {
-  // A model that declares nothing keeps the provider's own default; guessing
-  // here would replace it with an invented level.
+test('unknown support drops the level instead of forwarding it', () => {
+  // A model that publishes nothing rejects *any* explicit effort before provider
+  // I/O (DSH returns UNSUPPORTED_REASONING_EFFORT). Forwarding the request
+  // unchanged — the old behaviour — therefore guaranteed a failed call rather
+  // than preserving the provider default.
   const result = mapEffort('high', undefined)
-  assert.equal(result.effort, 'high')
-  assert.equal(result.mapped, false)
+  assert.equal(result.effort, undefined)
+  assert.equal(result.mapped, true)
   assert.equal(result.reason, 'unknown-support')
-  assert.deepEqual(mapEffort('high', []), { effort: 'high', mapped: false, reason: 'unknown-support' })
+  assert.deepEqual(mapEffort('xhigh', []), { effort: undefined, mapped: true, reason: 'unknown-support' })
 })
 
-test('a foreign name passes through when it cannot be matched', () => {
+test('a foreign name is dropped when the member does not publish it', () => {
   const result = mapEffort('turbo', list('low', 'high'))
-  assert.equal(result.effort, 'turbo')
-  assert.equal(result.mapped, false)
+  assert.equal(result.effort, undefined, 'sending turbo here would be rejected by the member')
+  assert.equal(result.mapped, true)
   assert.equal(result.reason, 'foreign-name')
   // ...but still works when the model actually offers it.
   assert.equal(mapEffort('turbo', list('low', 'turbo')).effort, 'turbo')
+})
+
+test('a member with only foreign names gets no level rather than an unsafe guess', () => {
+  assert.deepEqual(mapEffort('high', list('turbo', 'ludicrous')), { effort: undefined, mapped: true, reason: 'no-ladder-match' })
+})
+
+test('every mapped level is one the member publishes', () => {
+  // The invariant DSH requires: an explicit effort is forwarded verbatim and
+  // rejected unless the model declares it. Anything else must be dropped.
+  const declared = [list('none', 'low', 'high', 'max'), list('minimal', 'medium'), list('turbo'), list('off', 'xhigh')]
+  for (const supported of declared) {
+    const ids = supported.map(effort => effort.id)
+    for (const wanted of [...EFFORT_IDS, 'turbo', 'ludicrous', 'medium']) {
+      const result = mapEffort(wanted, supported)
+      assert.ok(
+        result.effort === undefined || ids.includes(result.effort),
+        `${wanted} on ${ids.join('/')} produced ${result.effort}`,
+      )
+    }
+  }
 })
 
 test('follow-session stays undefined', () => {
@@ -103,17 +125,14 @@ test('effortIds tolerates both shapes', () => {
   assert.deepEqual(effortIds(['', 7, null]), [])
 })
 
-test('effortOptions always offers the ladder, plus declared extras', () => {
-  assert.deepEqual(effortOptions().map(option => option.id), EFFORT_IDS)
-  const withExtra = effortOptions(['turbo', 'low']).map(option => option.id)
-  assert.deepEqual(withExtra.slice(0, 5), EFFORT_IDS, 'the ladder comes first')
-  assert.ok(withExtra.includes('turbo'), 'a provider-specific name stays selectable')
-  assert.equal(withExtra.filter(id => id === 'low').length, 1, 'no duplicate')
+test('a pinned default snaps onto the levels a member actually publishes', () => {
+  // The settings control speaks the five canonical names; a tier may speak
+  // Off/Low/High/Max. `xhigh` has to arrive as `max`, not as a word the model
+  // never published.
+  assert.equal(snapEffort('xhigh', ['none', 'low', 'high', 'max']), 'max')
+  assert.equal(snapEffort('middle', ['off', 'low', 'high']), 'high', 'ties go to the stronger level')
+  assert.equal(snapEffort('low', ['none', 'low', 'high', 'max']), 'low', 'an exact match is kept')
+  assert.equal(snapEffort('high', []), undefined, 'nothing to snap onto')
+  assert.equal(snapEffort('high', ['turbo']), undefined, 'a foreign-only menu cannot honour a ladder name')
 })
 
-test('supportsLadder needs at least one rankable member', () => {
-  assert.equal(supportsLadder([list('low', 'high')]), true)
-  assert.equal(supportsLadder([list('turbo'), list('low')]), true)
-  assert.equal(supportsLadder([list('turbo'), undefined]), false)
-  assert.equal(supportsLadder([undefined, []]), false)
-})

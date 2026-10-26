@@ -13,7 +13,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
-import { RouterAdapter, commitsAnswer, intersectEfforts, runMember } from '../src/adapter.js'
+import { RouterAdapter, commitsAnswer, runMember, tierReasoning } from '../src/adapter.js'
 import { SettingsStore } from '../src/store.js'
 
 const directories = []
@@ -328,7 +328,7 @@ test('advertised tiers are ordered, enabled-only, and include the empty default'
   assert.deepEqual(models.map(model => model.name), ['快', '慢'])
 })
 
-test('with mapping on the tier reports the plugin ladder', async () => {
+test('with mapping on the tier reports the levels its head member publishes', async () => {
   const { adapter } = wire(
     tierSettings([{ provider: 'a', model: 'big' }, { provider: 'b', model: 'small' }]),
     {
@@ -344,12 +344,25 @@ test('with mapping on the tier reports the plugin ladder', async () => {
   // that fits it. Reporting the smallest would throw away the big model's
   // capacity for every request.
   assert.equal(info.context.contextWindow, 1_000_000)
-  // Mapping is on by default: the picker shows one stable vocabulary and every
-  // selection is translated per member at dispatch. Showing the model's names
-  // here instead would make the switch look like it did nothing.
-  assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['off', 'low', 'middle', 'high', 'xhigh'])
-  // The model's own default ("low") is carried over in ladder terms.
+  // Regression: the picker used to show this plugin's ladder here, which meant a
+  // model reading Off/Low/High/Max was offered `xhigh` — a name it never
+  // published, and one DSH rejects outright at dispatch. The menu is the head
+  // member's own vocabulary; translation on the other members is dispatch's job.
+  assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['low', 'medium', 'high'])
+  // The model's own default is kept as published.
   assert.equal(info.reasoning.defaultEffort, 'low')
+})
+
+test('a model that publishes no levels advertises none', async () => {
+  // Claiming five levels for a model that declares nothing was the other half of
+  // the same defect: every selection then reached a model that rejects explicit
+  // efforts, so the picker's only working option was "follow session" anyway.
+  const { adapter } = wire(
+    tierSettings([{ provider: 'p', model: 'quiet' }]),
+    { models: { p: { models: [{ id: 'quiet' }] } }, routes: {} },
+  )
+  const info = await adapter.resolveModel('model-router', 'auto')
+  assert.equal(info.reasoning, undefined)
 })
 
 test('a deleted tier still resolves so a stored selection keeps rendering', async () => {
@@ -380,23 +393,39 @@ test('commitsAnswer keeps reasoning provisional', () => {
   assert.equal(commitsAnswer({ type: 'usage', usage: {} }), false)
 })
 
-test('intersectEfforts requires every member to agree', () => {
-  const one = { reasoning: { efforts: [{ id: 'low', name: 'low' }, { id: 'high', name: 'high' }], defaultEffort: 'low' } }
-  const two = { reasoning: { efforts: [{ id: 'high', name: 'high' }], defaultEffort: 'high' } }
-  assert.deepEqual(intersectEfforts([one, two]).efforts.map(effort => effort.id), ['high'])
-  assert.equal(intersectEfforts([one, { }]), undefined)
-  assert.equal(intersectEfforts([{ reasoning: { efforts: [{ id: 'a', name: 'a' }] } }, { reasoning: { efforts: [{ id: 'b', name: 'b' }] } }]), undefined)
+test('tierReasoning takes its menu from the members', () => {
+  const info = efforts => ({
+    reasoning: { efforts: efforts.map(id => ({ id, name: id })), defaultEffort: efforts[0] },
+  })
+  const one = info(['none', 'low', 'high', 'max'])
+  const two = info(['low', 'medium', 'high'])
+  // Mapping on: the first member that declares levels names the menu — the
+  // vocabulary a user already knows from that model, and never an invented rung.
+  assert.deepEqual(tierReasoning([{}, one, two], [], true).efforts.map(effort => effort.id), ['none', 'low', 'high', 'max'])
+  // No member declares anything: nothing to claim.
+  assert.equal(tierReasoning([{}, {}], [], true), undefined)
+  // Mapping off: nothing is translated, so only the intersection is safe.
+  assert.deepEqual(tierReasoning([one, two], [], false).efforts.map(effort => effort.id), ['low', 'high'])
+  assert.equal(tierReasoning([one, {}], [], false), undefined, 'an undeclared member leaves nothing every member can honour')
+  assert.equal(
+    tierReasoning([info(['a']), info(['b'])], [], false),
+    undefined,
+    'disjoint vocabularies share nothing',
+  )
 })
 
-test('a member effort override narrows the offered set instead of widening it', () => {
+test('a member pinned to one level narrows the strict menu instead of widening it', () => {
   const info = { reasoning: { efforts: [{ id: 'low', name: 'low' }, { id: 'high', name: 'high' }], defaultEffort: 'low' } }
   // Declaring `high` leaves only `high`: offering `low` would dispatch a value
   // this member's override does not use.
-  assert.deepEqual(intersectEfforts([info], [{ reasoningEffort: 'high' }]).efforts.map(effort => effort.id), ['high'])
+  assert.deepEqual(tierReasoning([info], [{ reasoningEffort: 'high' }], false).efforts.map(effort => effort.id), ['high'])
   // An effort the model does not publish cannot be claimed.
-  assert.equal(intersectEfforts([info], [{ reasoningEffort: 'max' }]), undefined)
+  assert.equal(tierReasoning([info], [{ reasoningEffort: 'max' }], false), undefined)
   // No override means the model's own list is offered.
-  assert.deepEqual(intersectEfforts([info], [{}]).efforts.map(effort => effort.id), ['low', 'high'])
+  assert.deepEqual(tierReasoning([info], [{}], false).efforts.map(effort => effort.id), ['low', 'high'])
+  // With mapping on, the vocabulary stays the member's declaration: the override
+  // is a dispatch detail, and hiding it would leave only one selectable level.
+  assert.deepEqual(tierReasoning([info], [{ reasoningEffort: 'high' }], true).efforts.map(effort => effort.id), ['low', 'high'])
 })
 
 test('a declared context window overrides what the model reports', async () => {
@@ -434,7 +463,7 @@ test('a tier override applies to every member that does not set its own', async 
   // reported 200K, which is the point of the override), and `b` keeps its own
   // 32K. The tier advertises the largest of those effective windows.
   assert.equal(info.context.contextWindow, 100_000)
-  assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['off', 'low', 'middle', 'high', 'xhigh'], 'mapping on always offers the ladder')
+  assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['low', 'high'], 'the head member publishes low/high')
 })
 
 test('a request too large for the head member routes to the one that fits', async () => {
@@ -655,6 +684,46 @@ test('a tier maps the requested level onto the member vocabulary', async () => {
   const chunks = await collect(adapter, 'auto')
   assert.equal(finishOf(chunks).reason.kind, 'stop')
   assert.deepEqual(llm.seen, ['max'], 'the request carried the model\'s own name')
+})
+
+test('a level the member does not publish is never forwarded', async () => {
+  // The reported failure: a session carrying `xhigh` reached a member that
+  // publishes nothing about reasoning. DSH rejects any explicit effort for such
+  // a model before provider I/O (UNSUPPORTED_REASONING_EFFORT), and the whole
+  // turn failed. The router must drop the level and let the member default.
+  const store = makeStore(tierSettings([{ provider: 'p', model: 'm' }]))
+  const adapter = new RouterAdapter({ store, logger: {} })
+  const llm = effortSpy([])
+  adapter.ctx = { llm }
+  const chunks = await collect(adapter, 'auto', { reasoningEffort: 'xhigh' })
+  assert.equal(finishOf(chunks).reason.kind, 'stop', 'the turn still answers')
+  assert.deepEqual(llm.seen, [undefined], 'no invented level reached the member')
+})
+
+test('a level named differently by the fallback is translated for it', async () => {
+  // One member speaks Off/Low/High/Max, the other none/low/mid/high. The session
+  // asks for `xhigh`; the second member must see its own strongest level.
+  const store = makeStore(tierSettings([{ provider: 'p', model: 'm', attempts: 0 }, { provider: 'q', model: 'n', attempts: 0 }]))
+  const adapter = new RouterAdapter({ store, logger: {} })
+  const seen = []
+  const llm = {
+    listProviders: () => [{ id: 'p' }, { id: 'q' }],
+    resolveModelInfo: async (provider, model) => ({
+      provider, id: model, name: model,
+      reasoning: { efforts: (provider === 'p' ? ['none', 'low', 'high', 'max'] : ['none', 'low', 'mid', 'high']).map(id => ({ id, name: id })), defaultEffort: 'low' },
+    }),
+    prepareCall: async config => {
+      seen.push([`${config.provider}/${config.model}`, config.reasoningEffort])
+      return {
+        config: { provider: config.provider, model: config.model, reasoningEffort: config.reasoningEffort, maxTokens: 0, temperature: undefined, stop: undefined },
+        stream: () => streamOf(config.provider === 'p' ? fail('SERVER') : answer('ok')),
+      }
+    },
+  }
+  adapter.ctx = { llm }
+  const chunks = await collect(adapter, 'auto', { reasoningEffort: 'xhigh' })
+  assert.equal(finishOf(chunks).reason.kind, 'stop')
+  assert.deepEqual(seen, [['p/m', 'max'], ['q/n', 'high']], 'each member heard its own name for the level')
 })
 
 test('mapping off forwards the level exactly as written', async () => {
@@ -1124,13 +1193,21 @@ test('a new conversation defaults to the model level unless overridden', async (
     { models: { p: { models: [{ id: 'm', efforts: ['off', 'low', 'high', 'max'] }] } }, routes: {} },
   )
   const model = await build({}).adapter.resolveModel('model-router', 'auto')
-  assert.equal(model.reasoning.defaultEffort, 'off', "the model's own default carries over as a ladder id")
+  assert.equal(model.reasoning.defaultEffort, 'off', "the model's own default is used as published")
 
+  // The settings control speaks the five canonical names. `middle` must arrive
+  // as one of this model's own levels (the stronger of two equally close ones),
+  // never as a name it did not publish.
   const wantedM = await build({ defaultEffort: 'middle' }).adapter.resolveModel('model-router', 'auto')
-  assert.equal(wantedM.reasoning.defaultEffort, 'middle', 'with the ladder shown, a ladder level is advertised as-is')
+  assert.equal(wantedM.reasoning.defaultEffort, 'high', 'a ladder pin is snapped onto the model vocabulary')
 
   const wantedLow = await build({ defaultEffort: 'low' }).adapter.resolveModel('model-router', 'auto')
   assert.equal(wantedLow.reasoning.defaultEffort, 'low')
+
+  // The reported case: a pinned `xhigh` on a model topping out at `max`.
+  const wantedX = await build({ defaultEffort: 'xhigh' }).adapter.resolveModel('model-router', 'auto')
+  assert.equal(wantedX.reasoning.defaultEffort, 'max')
+  assert.ok(!wantedX.reasoning.efforts.some(effort => effort.id === 'xhigh'), 'no invented rung')
 })
 
 test('the default is always one of the advertised levels', async () => {

@@ -380,13 +380,16 @@ test('the page is split into four tabs that partition the sections', async () =>
 
 test('the effort menu lists only the levels the model declares', async () => {
   // Regression: the menu prepended this plugin's five-rung ladder, so a model
-  // offering Off/Low/High/Max was shown Off/Low/Middle/High/Xhigh — options that
-  // do nothing or get silently translated into a neighbour.
-  const { effortChoices, EFFORT_LADDER } = loadBundle().__test
+  // offering Off/Low/High/Max was shown Off/Low/Middle/High/Xhigh — levels it
+  // never published, which DSH then rejects when they reach dispatch. The
+  // mapping switch must not swap the vocabulary either: it only decides whether
+  // a session level is translated onto the member.
+  const { effortChoices, EFFORT_LADDER, effortMenu } = loadBundle().__test
   assert.deepEqual(effortChoices(['low', 'high', 'max']), ['low', 'high', 'max'], 'exactly what the model says')
   assert.deepEqual(effortChoices([]), [], 'a model that declares nothing offers nothing')
   assert.deepEqual(effortChoices(['high', 'high']), ['high'], 'no duplicates')
   assert.ok(!effortChoices(['low']).some(id => EFFORT_LADDER.includes(id) && id !== 'low'), 'no ladder is injected')
+  assert.equal(effortMenu, undefined, 'no second, ladder-based menu may come back')
 })
 
 test('a skipped member is labelled by its actual reason', async () => {
