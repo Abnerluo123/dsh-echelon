@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { filterModels, hiddenSummary, installCatalogFilter } from '../src/catalog.js'
+import { filterModels, hiddenSummary, installCatalogFilter, listUnfiltered } from '../src/catalog.js'
 import { normalizeSettings } from '../src/config.js'
 
 const models = [
@@ -138,4 +138,35 @@ test('hiddenSummary counts what the picker will lose', () => {
   assert.equal(summary.hidden, 2)
   assert.equal(summary.total, 3)
   assert.deepEqual(summary.sample, ['p/one', 'q/three'])
+})
+
+test('the plugin can still read models that hiding removes', async () => {
+  // Regression: the member editor read the *filtered* list, so turning hiding on
+  // made every hidden model unaddable — the user had to disable hiding to build
+  // the very tier hiding depends on.
+  const models = [
+    { provider: 'p', id: 'hidden-one', name: 'hidden-one' },
+    { provider: 'p', id: 'hidden-two', name: 'hidden-two' },
+  ]
+  const llm = {
+    listProviders: () => [{ id: 'p', name: 'p' }],
+    listModels: async () => models.slice(),
+  }
+  // The interlock lifts hiding while no tier can dispatch, so the fixture needs
+  // one real tier for the hide to take effect at all.
+  const settings = normalizeSettings({
+    exposure: 'tiers',
+    tiers: [{ id: 'auto', name: 'Auto', members: [{ provider: 'p', model: 'm' }] }],
+  })
+  installCatalogFilter(llm, () => settings)
+  assert.deepEqual(await llm.listModels('p'), [], 'the picker sees nothing')
+
+  const unfiltered = await listUnfiltered(llm, 'p')
+  assert.deepEqual(unfiltered.map(model => model.id), ['hidden-one', 'hidden-two'], 'the editor still sees everything')
+})
+
+test('listUnfiltered works before the filter is installed', async () => {
+  const llm = { listModels: async () => [{ id: 'a' }, { id: 'b' }] }
+  assert.deepEqual((await listUnfiltered(llm, 'p')).map(model => model.id), ['a', 'b'])
+  assert.deepEqual(await listUnfiltered({}, 'p'), [], 'a service without the method yields nothing instead of throwing')
 })

@@ -118,6 +118,8 @@ window.__ModuleLoader__.load({
         'options.file': '配置文件',
         'options.copy': '复制路径',
         'options.copied': '已复制',
+        'options.effortMapping': '思考强度自动映射',
+        'options.effortMappingHint': '把 xhigh / high / middle / low / off 翻译成每个模型自己的挡位名字。关掉则原样转发。',
         'options.logging': '记录调用日志',
         'options.loggingHint': '只存在内存里，重启即清空。用来查这一轮到底用了哪个模型、为什么换掉前一个。',
         'options.logLimit': '保留条数',
@@ -241,6 +243,8 @@ window.__ModuleLoader__.load({
         'options.file': 'Settings file',
         'options.copy': 'Copy path',
         'options.copied': 'Copied',
+        'options.effortMapping': 'Map reasoning levels automatically',
+        'options.effortMappingHint': 'Translate xhigh / high / middle / low / off into each model\'s own names. Off forwards the value as written.',
         'options.logging': 'Record a request log',
         'options.loggingHint': 'In memory only; cleared by a restart. Shows which model served each turn and why earlier ones were dropped.',
         'options.logLimit': 'Entries kept',
@@ -499,6 +503,36 @@ window.__ModuleLoader__.load({
       return copy
     }
 
+    /**
+     * The effort ladder the plugin always offers, strongest last.
+     *
+     * Mirrors `src/effort.js`. Duplicated here because the browser half ships as
+     * one self-contained bundle and cannot import from the host side; the test
+     * suite guards that the two lists agree.
+     */
+    const EFFORT_LADDER = ['off', 'low', 'middle', 'high', 'xhigh']
+
+    /**
+     * Build the effort menu: the whole ladder plus any extra names the member's
+     * model declares, so a gateway with its own vocabulary stays selectable.
+     *
+     * Without the ladder a tier could only offer the levels its members happen to
+     * share — and when they share none, the menu was empty apart from "follow
+     * session", which is exactly the bug this replaces.
+     * @param {Iterable<string>} [declared] - effort ids the member advertises.
+     * @returns {string[]} option ids in display order.
+     */
+    function effortChoices(declared) {
+      const seen = new Set(EFFORT_LADDER)
+      const out = EFFORT_LADDER.slice()
+      for (const id of declared === undefined ? [] : [...declared]) {
+        if (typeof id !== 'string' || id === '' || seen.has(id)) continue
+        seen.add(id)
+        out.push(id)
+      }
+      return out
+    }
+
     /** Move one item within a list; out-of-range moves are no-ops. */
     function move(list, index, delta) {
       const target = index + delta
@@ -683,7 +717,8 @@ window.__ModuleLoader__.load({
       const verdict = probe?.[`${member.provider}/${member.model}`]
       // Effort options come from the live probe when it has run (that is the
       // model's own declaration), falling back to the catalog entry.
-      const efforts = verdict?.efforts ?? known?.efforts ?? []
+      const declared = verdict?.efforts ?? known?.efforts ?? []
+      const efforts = effortChoices(declared)
       const inheritedContext = verdict?.contextWindow ?? known?.contextWindow
       const inheritedMax = verdict?.maxTokens ?? known?.maxTokens
       /** Drop a key so the field falls back to "inherit". */
@@ -832,10 +867,10 @@ window.__ModuleLoader__.load({
               },
             },
             h('option', { value: '' }, t('member.effortDefault')),
-            tier.reasoningEffort !== undefined && !tierEfforts.includes(tier.reasoningEffort)
+            tier.reasoningEffort !== undefined && !effortChoices(tierEfforts).includes(tier.reasoningEffort)
               ? h('option', { key: '__stored', value: tier.reasoningEffort }, tier.reasoningEffort)
               : null,
-            tierEfforts.map(effort => h('option', { key: effort, value: effort }, effort)))),
+            effortChoices(tierEfforts).map(effort => h('option', { key: effort, value: effort }, effort)))),
           h(Field, { label: t('member.context'), hint: t('member.contextHint') },
             h(BudgetInput, {
               value: tier.contextWindow, ariaLabel: `${tier.name} ${t('member.context')}`,
@@ -1244,6 +1279,13 @@ window.__ModuleLoader__.load({
               onChange: event => setDraft(current => ({ ...current, showTierDescriptions: event.target.checked })),
             }),
             h('span', { style: { fontSize: '13px' } }, t('options.descriptions'))),
+          h('label', { className: 'mr-row', title: t('options.effortMappingHint') },
+            h('input', {
+              type: 'checkbox', checked: settings.effortMapping !== false,
+              onChange: event => setDraft(current => ({ ...current, effortMapping: event.target.checked })),
+            }),
+            h('span', { style: { fontSize: '13px' } }, t('options.effortMapping')),
+            h('small', null, t('options.effortMappingHint'))),
           h('label', { className: 'mr-row', title: t('options.loggingHint') },
             h('input', {
               type: 'checkbox', checked: settings.logRequests !== false,
@@ -1361,7 +1403,7 @@ window.__ModuleLoader__.load({
     exports.apply = apply
     exports.inject = inject
     exports.name = 'model-router'
-    exports.__test = { DICT, CSS, TABS, makeTierId, fromSeconds, toSeconds, move, setHideRule }
+    exports.__test = { DICT, CSS, TABS, EFFORT_LADDER, effortChoices, makeTierId, fromSeconds, toSeconds, move, setHideRule }
     return module.exports
   },
 })

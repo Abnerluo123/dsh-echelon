@@ -377,3 +377,13 @@ test('the page is split into four tabs that partition the sections', async () =>
 })
 
 
+
+test('the browser ladder matches the host ladder', async () => {
+  // client.js ships as a standalone bundle and cannot import from src, so the
+  // ladder is declared twice. This keeps the two declarations honest.
+  const { EFFORT_LADDER } = await import('../src/effort.js')
+  const { effortChoices, EFFORT_LADDER: clientLadder } = loadBundle().__test
+  assert.deepEqual(clientLadder, EFFORT_LADDER.map(step => step.id))
+  assert.deepEqual(effortChoices([]), clientLadder, 'the menu always offers every rung')
+  assert.deepEqual(effortChoices(['turbo']).slice(-1), ['turbo'], 'a foreign name is appended, not replaced')
+})

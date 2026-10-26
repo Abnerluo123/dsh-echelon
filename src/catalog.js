@@ -33,6 +33,31 @@ import { ROUTER_PROVIDER, isHidden } from './config.js'
 const WRAPPED = Symbol.for('dsh-model-router.listModels')
 
 /**
+ * Holds the pre-wrap function, so the plugin can still read the *unfiltered*
+ * catalog for its own editors.
+ *
+ * This matters: hiding is meant to shape the model picker, but the plugin's own
+ * "add member" dialog must keep offering every real model — otherwise enabling
+ * "hide everything" locks the user out of adding the very models being hidden,
+ * and the only way back is to turn hiding off. The plain `listModels` cannot be
+ * used for that read, because it is the filtered one by then.
+ */
+const ORIGINAL = Symbol.for('dsh-model-router.unfiltered')
+
+/**
+ * Read one provider's catalog as the adapter advertises it, ignoring hiding.
+ * @param {object} llm - the `llm` service instance.
+ * @param {string} provider - provider route id.
+ * @returns {Promise<Array<object>>} every model, hidden or not.
+ */
+export async function listUnfiltered(llm, provider) {
+  const read = llm?.listModels
+  if (typeof read !== 'function') return []
+  const original = read[ORIGINAL]
+  return typeof original === 'function' ? original.call(llm, provider) : read.call(llm, provider)
+}
+
+/**
  * Install the catalog filter on a live `LlmRuntime`.
  *
  * @param {object} llm - the `llm` service instance.
@@ -68,6 +93,8 @@ export function installCatalogFilter(llm, readSettings) {
   // Async function identity does not survive a bind, so the marker goes on the
   // wrapper itself; `apply`/`call` are used above to keep the receiver intact.
   Object.defineProperty(wrapped, WRAPPED, { value: true, enumerable: false })
+  // Keep the unfiltered read reachable for the plugin's own editors.
+  Object.defineProperty(wrapped, ORIGINAL, { value: existing, enumerable: false })
   Object.defineProperty(wrapped, 'name', { value: 'listModels', configurable: true })
 
   llm.listModels = wrapped

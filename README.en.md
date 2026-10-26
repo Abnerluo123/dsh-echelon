@@ -34,10 +34,42 @@ From then on, changing what "Daily" runs on means reordering that tier's members
 | **Retries** | Extra tries on the *same* member before failing over. `0` never retries; `1` (default) tries twice. |
 | **Timeout** | Fail over after this long with no data at all. `0` means no limit. |
 | **Context window / max output** | Empty means "use what the model reports"; a value overrides it. |
-| **Reasoning effort** | Empty follows the session's own choice; a chosen level is the only one that member uses. |
+| **Reasoning effort** | Empty follows the session's own choice; a chosen level is the only one that member uses. The plugin offers `off/low/middle/high/xhigh` and translates them into each model's own names. |
 | **Exposure** | Tiers only / hide only what I check / show everything. |
 
 The per-member knobs are collapsed by default; the summary still shows their current values, so a collapsed block answers "what is this member set to" without opening it.
+
+## Reasoning-effort mapping
+
+Every model names its reasoning levels differently — `minimal/low/medium/high`, or
+`off/low/high/max`, or only `default/high`, or (on a free lane) nothing at all. A
+tier that could only offer the levels its members *share* often had nothing to
+offer, which is why the effort menu used to contain just "follow session".
+
+So the plugin owns one vocabulary and translates per member at dispatch:
+
+```
+off  <  low  <  middle  <  high  <  xhigh
+```
+
+| You pick | Sent to a model declaring `low/high/max` | Why |
+|---|---|---|
+| `off` | `low` | the cheapest lane, when reasoning cannot be switched off |
+| `low` | `low` | exact match |
+| `middle` | `low` or `high` | equidistant, so the **stronger** one wins |
+| `high` | `high` | exact match |
+| `xhigh` | `max` | that model's own top level |
+
+The rules:
+
+- The menu **always** offers all five rungs, plus any extra names a model declares
+  (`max`, `turbo`, …).
+- A model that declares nothing gets the request forwarded unchanged — the
+  provider's default is never replaced by a guess.
+- A name outside the ladder is forwarded unchanged too, so provider-specific
+  vocabulary still works.
+- Turn off **Settings → Advanced → Map reasoning levels automatically** to forward
+  the raw value.
 
 Tiers and members both take a reasoning effort and a context window. **A member's own value wins**; otherwise the tier's default applies; otherwise the model and session decide. That way a whole chain can be retuned by editing one tier field instead of visiting every member.
 

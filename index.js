@@ -20,7 +20,7 @@
  * @module dsh-model-router
  */
 import { RouterAdapter } from './src/adapter.js'
-import { installCatalogFilter } from './src/catalog.js'
+import { installCatalogFilter, listUnfiltered } from './src/catalog.js'
 import { ROUTER_PROVIDER, exposureHidesStock } from './src/config.js'
 import { API_PREFIX, createHandler } from './src/http.js'
 import { RequestLog } from './src/log.js'
@@ -138,9 +138,13 @@ export function stockMenuWouldBeEmpty(ctx, settings) {
 /**
  * The provider-grouped catalog of *real* models, as the settings page sees it.
  *
- * Built from `listModels` on each registered route except this plugin's own,
- * because a tier list whose editor offered tiers as members would let a user
- * build a cycle through the UI.
+ * Read **unfiltered**: hiding shapes the model picker, but this list feeds the
+ * member editor, which must be able to offer a model that is currently hidden —
+ * otherwise "show only my tiers" makes the other models unaddable, and the user
+ * has to disable hiding before they can build the tier that hiding depends on.
+ *
+ * This plugin's own route is excluded, because a tier list whose editor offered
+ * tiers as members would let a user build a cycle through the UI.
  * @param {import('@deepseek-ai/cordis').Context} ctx - the plugin context.
  * @returns {Promise<Array<{id: string, name: string, models: Array<object>}>>} groups for the editor.
  */
@@ -150,7 +154,7 @@ async function liveCatalog(ctx) {
   const providers = llm.listProviders().filter(provider => provider.id !== ROUTER_PROVIDER)
   const groups = await Promise.all(providers.map(async provider => {
     try {
-      const models = await llm.listModels(provider.id)
+      const models = await listUnfiltered(llm, provider.id)
       const resolved = await Promise.all(models.map(async model => {
         try {
           const info = await llm.resolveModelInfo(provider.id, model.id)

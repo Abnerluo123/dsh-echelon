@@ -210,5 +210,5 @@ test('log retention settings are clamped and default on', () => {
 })
 
 test('the stored version records the shape change', () => {
-  assert.equal(normalizeSettings({ version: 1 }).version, 2)
+  assert.equal(normalizeSettings({ version: 1 }).version, 3)
 })

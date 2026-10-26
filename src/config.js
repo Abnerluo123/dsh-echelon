@@ -293,7 +293,7 @@ export function normalizeSettings(raw) {
   const timeout = Number(source.defaultIdleTimeoutMs)
   const logLimit = Number(source.logLimit)
   return {
-    version: 2,
+    version: 3,
     exposure: EXPOSURE_MODES.includes(source.exposure) ? source.exposure : 'tiers',
     tiers: kept,
     hide,
@@ -306,6 +306,11 @@ export function normalizeSettings(raw) {
     // without limit.
     logRequests: source.logRequests !== false,
     logLimit: Number.isFinite(logLimit) ? clamp(Math.trunc(logLimit), MIN_LOG_LIMIT, MAX_LOG_LIMIT) : DEFAULT_LOG_LIMIT,
+    // Effort auto-mapping: translate the plugin's five words onto whatever each
+    // model calls its levels. On by default because without it a tier mixing
+    // models with different vocabularies can only offer levels they share —
+    // often none at all.
+    effortMapping: source.effortMapping !== false,
   }
 }
 

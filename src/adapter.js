@@ -34,6 +34,7 @@ import {
   retryDelay,
   tierChain,
 } from './config.js'
+import { EFFORT_IDS, mapEffort, supportsLadder } from './effort.js'
 import { RequestLog, usageOf } from './log.js'
 import { SettingsStore } from './store.js'
 import { estimateRequestTokens } from './tokens.js'
@@ -316,7 +317,14 @@ export class RouterAdapter extends Adapter {
       .filter(window => Number.isInteger(window) && window > 0)
     const defaults = chain.map((member, index) => member.maxTokens ?? usable[index]?.defaultMaxTokens)
       .filter(tokens => Number.isSafeInteger(tokens) && tokens > 0)
-    const efforts = intersectEfforts(usable, chain)
+    // With mapping on, the tier can offer every rung of the ladder because each
+    // attempt translates to the member's own vocabulary. Without it, only the
+    // levels every member shares can be honoured.
+    const mapped = settings.effortMapping !== false
+      && supportsLadder(chain.map((member, index) => usable[index]?.reasoning?.efforts))
+    const efforts = mapped
+      ? { efforts: EFFORT_IDS.map(id => ({ id, name: id })), defaultEffort: EFFORT_IDS[2] }
+      : intersectEfforts(usable, chain)
     return {
       ...base,
       ...(settings.showTierDescriptions ? { description: describeTier(tier) } : {}),
@@ -381,8 +389,11 @@ export class RouterAdapter extends Adapter {
    * Windows are resolved per turn rather than cached: a gateway can change what
    * it advertises, and a stale window would route a large request into a small
    * model for the rest of the process's life. The resolution is bounded (one
-   * `resolveModelInfo` per member) and only runs when the chain has more than one
-   * member, because a single-member tier has nothing to choose between.
+   * `resolveModelInfo` per member).
+   *
+   * The same pass also attaches each member's advertised reasoning efforts,
+   * because effort mapping needs them and a second lookup per attempt would
+   * double the metadata calls for every turn.
    * @param {object} llm - the live LLM service.
    * @param {Array<object>} chain - the tier's dispatch chain.
    * @param {object} options - the request about to be dispatched.
@@ -390,26 +401,28 @@ export class RouterAdapter extends Adapter {
    */
   async #routeByContext(llm, chain, options) {
     const estimate = estimateRequestTokens(options, this.ctx?.tokenMeter).inputTokens
-    if (chain.length === 1) {
-      return { ordered: chain, skipped: [], estimate, fits: true }
-    }
-    const windows = new Map()
+    // Even a single-member chain needs its efforts, for mapping.
+    const resolved = new Map()
     await Promise.all(chain.map(async member => {
       try {
         const info = await llm.resolveModelInfo?.(member.provider, member.model, options.signal)
-        const window = member.contextWindow ?? info?.context?.contextWindow
-        if (Number.isFinite(window) && window > 0) {
-          windows.set(`${member.provider}/${member.model}`, window)
-        }
+        if (info !== undefined) resolved.set(`${member.provider}/${member.model}`, info)
       } catch {
-        // An unresolvable member is left without a window, so `orderByContext`
-        // keeps it eligible rather than silently dropping the only lane.
+        // An unresolvable member keeps no metadata: `orderByContext` then treats
+        // it as eligible and effort mapping forwards the request unchanged.
       }
     }))
     const enriched = chain.map(member => {
-      const window = windows.get(`${member.provider}/${member.model}`)
-      return window === undefined ? member : { ...member, contextWindow: window }
+      const info = resolved.get(`${member.provider}/${member.model}`)
+      if (info === undefined) return member
+      const window = member.contextWindow ?? info.context?.contextWindow
+      return {
+        ...member,
+        ...(Number.isFinite(window) && window > 0 ? { contextWindow: window } : {}),
+        ...(info.reasoning?.efforts === undefined ? {} : { efforts: info.reasoning.efforts }),
+      }
     })
+    if (chain.length === 1) return { ordered: enriched, skipped: [], estimate, fits: true }
     return orderByContext(enriched, estimate)
   }
 
@@ -495,7 +508,7 @@ export class RouterAdapter extends Adapter {
         }
         budget -= 1
         const startedAt = Date.now()
-        const outcome = await this.#attempt(llm, member, options, idleTimeoutMs)
+        const outcome = await this.#attempt(llm, member, options, idleTimeoutMs, settings.effortMapping !== false)
         if (outcome.kind === 'answer') {
           this.#logger.info?.(`model-router: tier "${tier.id}" answered with ${label}`)
           turn.attempt({ provider: member.provider, model: member.model, attempt: attempt + 1, outcome: 'ok', durationMs: Date.now() - startedAt })
@@ -543,17 +556,30 @@ export class RouterAdapter extends Adapter {
     yield finishError('TRANSPORT', `模型路由：挡位 “${tier.name}” 的所有成员都失败了。已尝试：${tried.join(' → ') || '无'}`)
   }
 
-  /** Prepare and run one member attempt, normalized to a verdict. */
-  async #attempt(llm, member, options, idleTimeoutMs) {
+  /**
+   * Prepare and run one member attempt, normalized to a verdict.
+   * @param {object} llm - the live LLM service.
+   * @param {object} member - one dispatch-chain entry, carrying advertised `efforts`.
+   * @param {object} options - the request.
+   * @param {number} idleTimeoutMs - fail the attempt after this long with no data.
+   * @param {boolean} mappingEnabled - translate the effort ladder onto this member.
+   */
+  async #attempt(llm, member, options, idleTimeoutMs, mappingEnabled) {
     try {
       // Precedence for the effort: the member's own choice, then the tier's
       // default (already folded in by `tierChain`), then whatever the session
       // asked for. `maxTokens` follows the same shape, so an explicit budget on
       // a member also caps that member's request.
-      const reasoningEffort = member.reasoningEffort ?? options.reasoningEffort
+      const requested = member.reasoningEffort ?? options.reasoningEffort
+      // Translation happens here, per member, because "high" means a different
+      // id on every provider. Mapping off is the escape hatch for anyone who
+      // wants the raw value forwarded.
+      const effort = mappingEnabled
+        ? mapEffort(requested, member.efforts).effort
+        : requested
       const maxTokens = member.maxTokens ?? options.maxTokens
       const controls = {
-        ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+        ...(effort === undefined ? {} : { reasoningEffort: effort }),
         ...(maxTokens === undefined ? {} : { maxTokens }),
         ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
         ...(options.stop === undefined ? {} : { stop: options.stop }),

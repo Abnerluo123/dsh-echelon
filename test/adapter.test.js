@@ -327,7 +327,7 @@ test('advertised tiers are ordered, enabled-only, and include the empty default'
   assert.deepEqual(models.map(model => model.name), ['快', '慢'])
 })
 
-test('a tier reports the largest member window and the shared efforts', async () => {
+test('a tier reports the largest member window and the full effort ladder', async () => {
   const { adapter } = wire(
     tierSettings([{ provider: 'a', model: 'big' }, { provider: 'b', model: 'small' }]),
     {
@@ -343,8 +343,10 @@ test('a tier reports the largest member window and the shared efforts', async ()
   // that fits it. Reporting the smallest would throw away the big model's
   // capacity for every request.
   assert.equal(info.context.contextWindow, 1_000_000)
-  assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['medium', 'high'])
-  assert.equal(info.reasoning.defaultEffort, 'medium')
+  // With mapping on (the default) every rung is offered, because each attempt
+  // translates to the member's own vocabulary.
+  assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['off', 'low', 'middle', 'high', 'xhigh'])
+  assert.equal(info.reasoning.defaultEffort, 'middle')
 })
 
 test('a deleted tier still resolves so a stored selection keeps rendering', async () => {
@@ -429,7 +431,7 @@ test('a tier override applies to every member that does not set its own', async 
   // reported 200K, which is the point of the override), and `b` keeps its own
   // 32K. The tier advertises the largest of those effective windows.
   assert.equal(info.context.contextWindow, 100_000)
-  assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['high'])
+  assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['off', 'low', 'middle', 'high', 'xhigh'])
 })
 
 test('a request too large for the head member routes to the one that fits', async () => {
@@ -619,4 +621,56 @@ test('logging respects the stored retention limit at construction', () => {
   const store = makeStore({ ...tierSettings([{ provider: 'a', model: 'one' }]), logLimit: 25 })
   const adapter = new RouterAdapter({ store, logger: {} })
   assert.equal(adapter.requestLog.limit, 25)
+})
+
+/** A runtime that records the reasoning effort each attempt actually requests. */
+function effortSpy(efforts) {
+  const seen = []
+  return {
+    seen,
+    listProviders: () => [{ id: 'p', name: 'p' }],
+    resolveModelInfo: async (provider, model) => ({
+      provider, id: model, name: model,
+      reasoning: { efforts: efforts.map(id => ({ id, name: id })), defaultEffort: efforts[0] },
+    }),
+    prepareCall: async config => {
+      seen.push(config.reasoningEffort)
+      return {
+        config: { provider: 'p', model: config.model, reasoningEffort: config.reasoningEffort, maxTokens: 0, temperature: undefined, stop: undefined },
+        stream: () => streamOf(answer('ok')),
+      }
+    },
+  }
+}
+
+test('a tier maps the requested level onto the member vocabulary', async () => {
+  // 'xhigh' is not something this model publishes; its top level is 'max'.
+  const store = makeStore(tierSettings([{ provider: 'p', model: 'm', reasoningEffort: 'xhigh' }]))
+  const adapter = new RouterAdapter({ store, logger: {} })
+  const llm = effortSpy(['low', 'high', 'max'])
+  adapter.ctx = { llm }
+  const chunks = await collect(adapter, 'auto')
+  assert.equal(finishOf(chunks).reason.kind, 'stop')
+  assert.deepEqual(llm.seen, ['max'], 'the request carried the model\'s own name')
+})
+
+test('mapping off forwards the level exactly as written', async () => {
+  const store = makeStore({
+    ...tierSettings([{ provider: 'p', model: 'm', reasoningEffort: 'xhigh' }]),
+    effortMapping: false,
+  })
+  const adapter = new RouterAdapter({ store, logger: {} })
+  const llm = effortSpy(['low', 'high', 'max'])
+  adapter.ctx = { llm }
+  await collect(adapter, 'auto')
+  assert.deepEqual(llm.seen, ['xhigh'], 'the raw value went out untouched')
+})
+
+test('follow-session sends no effort at all', async () => {
+  const store = makeStore(tierSettings([{ provider: 'p', model: 'm' }]))
+  const adapter = new RouterAdapter({ store, logger: {} })
+  const llm = effortSpy(['low', 'high'])
+  adapter.ctx = { llm }
+  await collect(adapter, 'auto')
+  assert.deepEqual(llm.seen, [undefined], 'an unset member leaves the choice to the session')
 })
