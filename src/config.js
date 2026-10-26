@@ -234,6 +234,9 @@ export function normalizeTier(raw, index = 0) {
     ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
     ...tokenBudget('contextWindow', raw.contextWindow),
     ...tokenBudget('maxTokens', raw.maxTokens),
+    ...(CONTEXT_STRATEGIES.includes(raw.contextStrategy) && raw.contextStrategy !== DEFAULT_CONTEXT_STRATEGY
+      ? { contextStrategy: raw.contextStrategy }
+      : {}),
   }
 }
 
@@ -399,6 +402,22 @@ export function tierChain(tier, available) {
 }
 
 /**
+ * How a tier picks among the members that can hold the current request.
+ *
+ * - `order` — the first fitting member in the user's chain order. Predictable,
+ *   and the right default: the chain already encodes "cheap first, strong later".
+ * - `roomy` — the fitting member with the most free space. Costs nothing extra
+ *   (it still only considers members that fit) but trades chain order for
+ *   headroom: useful when a long session must not be squeezed into a model that
+ *   has barely enough room, because that is where truncation and forced
+ *   mid-conversation switches come from.
+ */
+export const CONTEXT_STRATEGIES = Object.freeze(['order', 'roomy'])
+
+/** The shipped strategy: keep the user's order. */
+export const DEFAULT_CONTEXT_STRATEGY = 'order'
+
+/**
  * Order a chain for one request's context size.
  *
  * The rule is the user's rule: keep the chain order (which encodes cheap-first,
@@ -412,27 +431,37 @@ export function tierChain(tier, available) {
  * @param {Array<object>} chain - dispatch chain, each entry optionally carrying a resolved `contextWindow`.
  * @param {number} inputTokens - estimated input size of the request.
  * @param {(member: object) => number | undefined} [windowOf] - resolves a member's window when the entry does not carry one.
- * @returns {{ordered: Array<object>, skipped: Array<{provider: string, model: string, window: number, usable: number}>, estimate: number, fits: boolean}} the reordered chain and what was skipped.
+ * @param {{strategy?: string, reserveOutput?: number}} [options] - selection policy.
+ * @returns {{ordered: Array<object>, skipped: Array<{provider: string, model: string, window: number, usable: number}>, estimate: number, fits: boolean, strategy: string}} the reordered chain and what was skipped.
  */
-export function orderByContext(chain, inputTokens, windowOf) {
+export function orderByContext(chain, inputTokens, windowOf, options = {}) {
+  const strategy = CONTEXT_STRATEGIES.includes(options.strategy) ? options.strategy : DEFAULT_CONTEXT_STRATEGY
   const fits = []
   const skipped = []
-  for (const member of chain) {
+  const usableOf = member => {
     const window = member.contextWindow ?? (windowOf === undefined ? undefined : windowOf(member))
-    if (!Number.isFinite(window) || window <= 0) {
+    if (!Number.isFinite(window) || window <= 0) return undefined
+    const reserve = member.maxTokens ?? options.reserveOutput
+    const safety = Math.max(Math.ceil(window * 0.02), 512)
+    return { window, usable: Math.max(window - safety - (Number.isFinite(reserve) ? reserve : 0), 0) }
+  }
+  for (const member of chain) {
+    const room = usableOf(member)
+    if (room === undefined) {
       // An unknown window is not evidence of a small one.
       fits.push(member)
       continue
     }
-    const reserve = member.maxTokens
-    const usable = Math.max(window - Math.max(Math.ceil(window * 0.02), 512) - (Number.isFinite(reserve) ? reserve : 0), 0)
-    if (inputTokens <= usable) {
+    if (inputTokens <= room.usable) {
       fits.push(member)
       continue
     }
-    skipped.push({ provider: member.provider, model: member.model, window, usable })
+    skipped.push({ provider: member.provider, model: member.model, window: room.window, usable: room.usable })
   }
-  if (fits.length > 0) return { ordered: fits, skipped, estimate: inputTokens, fits: true }
+  if (fits.length > 0) {
+    const ordered = strategy === 'roomy' ? byHeadroom(fits, usableOf) : fits
+    return { ordered, skipped, estimate: inputTokens, fits: true, strategy }
+  }
 
   // Nothing holds it. Try the roomiest member so the failure is the provider's
   // real one rather than a guess, but keep the skip list for the log.
@@ -450,7 +479,30 @@ export function orderByContext(chain, inputTokens, windowOf) {
     skipped,
     estimate: inputTokens,
     fits: false,
+    strategy,
   }
+}
+
+/**
+ * Sort fitting members by free space, most first.
+ *
+ * Members whose window is unknown keep their relative position ahead of the
+ * ranked ones: nothing proved them small, and demoting them would make the
+ * strategy surprise anyone whose provider does not report a window.
+ * A stable tie keeps the user's order for equal capacity.
+ * @param {Array<object>} members - members that fit.
+ * @param {(member: object) => {window: number, usable: number} | undefined} usableOf - room measurement.
+ * @returns {Array<object>} members, roomiest first.
+ */
+function byHeadroom(members, usableOf) {
+  const ranked = members.map((member, index) => ({ member, index, room: usableOf(member) }))
+  ranked.sort((left, right) => {
+    const leftRoom = left.room === undefined ? Infinity : left.room.usable
+    const rightRoom = right.room === undefined ? Infinity : right.room.usable
+    if (leftRoom !== rightRoom) return rightRoom - leftRoom
+    return left.index - right.index
+  })
+  return ranked.map(entry => entry.member)
 }
 
 /**

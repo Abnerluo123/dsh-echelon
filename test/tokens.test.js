@@ -117,3 +117,48 @@ test('a member reserve reduces the usable window', () => {
   assert.deepEqual(result.ordered.map(entry => entry.provider), ['roomy'])
   assert.deepEqual(result.skipped.map(entry => entry.provider), ['capped'])
 })
+
+test('the roomy strategy prefers free space over chain order', () => {
+  // Both fit; order says 'small' first, headroom says 'big' first. This is the
+  // lever that keeps a long session off a model with barely enough room.
+  const chain = [member('small', 300_000), member('big', 1_000_000)]
+  const byOrder = orderByContext(chain, 1_000, undefined, { strategy: 'order' })
+  assert.deepEqual(byOrder.ordered.map(entry => entry.provider), ['small', 'big'])
+  const byRoom = orderByContext(chain, 1_000, undefined, { strategy: 'roomy' })
+  assert.deepEqual(byRoom.ordered.map(entry => entry.provider), ['big', 'small'])
+  assert.equal(byRoom.strategy, 'roomy')
+})
+
+test('roomy still refuses members that cannot hold the request', () => {
+  const chain = [member('tiny', 8_000), member('big', 1_000_000)]
+  const result = orderByContext(chain, 100_000, undefined, { strategy: 'roomy' })
+  assert.deepEqual(result.ordered.map(entry => entry.provider), ['big'])
+  assert.deepEqual(result.skipped.map(entry => entry.provider), ['tiny'])
+})
+
+test('roomy keeps chain order when capacities tie', () => {
+  const chain = [member('a', 200_000), member('b', 200_000)]
+  const result = orderByContext(chain, 1_000, undefined, { strategy: 'roomy' })
+  assert.deepEqual(result.ordered.map(entry => entry.provider), ['a', 'b'], 'a stable tie is the user order')
+})
+
+test('an unknown window is not demoted by the roomy strategy', () => {
+  // Nothing proved it small, so it stays ahead of the ranked members.
+  const chain = [member('unknown'), member('big', 1_000_000)]
+  const result = orderByContext(chain, 1_000, undefined, { strategy: 'roomy' })
+  assert.deepEqual(result.ordered.map(entry => entry.provider), ['unknown', 'big'])
+})
+
+test('an unknown strategy falls back to chain order', () => {
+  const chain = [member('small', 300_000), member('big', 1_000_000)]
+  const result = orderByContext(chain, 1_000, undefined, { strategy: 'nonsense' })
+  assert.deepEqual(result.ordered.map(entry => entry.provider), ['small', 'big'])
+  assert.equal(result.strategy, 'order')
+})
+
+test('a requested output reserve shrinks what counts as fitting', () => {
+  const chain = [member('tight', 10_000)]
+  // 5000 input would fit a 10K window outright, but not once 6000 is reserved.
+  assert.equal(orderByContext(chain, 5_000, undefined, {}).fits, true)
+  assert.equal(orderByContext(chain, 5_000, undefined, { reserveOutput: 6_000 }).fits, false)
+})

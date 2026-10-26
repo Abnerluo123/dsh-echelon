@@ -431,7 +431,7 @@ export class RouterAdapter extends Adapter {
    * @param {object} options - the request about to be dispatched.
    * @returns {Promise<{ordered: Array<object>, skipped: Array<object>, estimate: number, fits: boolean}>} routing decision.
    */
-  async #routeByContext(llm, chain, options) {
+  async #routeByContext(llm, chain, options, strategy) {
     const estimate = estimateRequestTokens(options, this.#meter()).inputTokens
     // Even a single-member chain needs its efforts, for mapping.
     const resolved = new Map()
@@ -454,8 +454,8 @@ export class RouterAdapter extends Adapter {
         ...(info.reasoning?.efforts === undefined ? {} : { efforts: info.reasoning.efforts }),
       }
     })
-    if (chain.length === 1) return { ordered: enriched, skipped: [], estimate, fits: true }
-    return orderByContext(enriched, estimate)
+    if (chain.length === 1) return { ordered: enriched, skipped: [], estimate, fits: true, strategy }
+    return orderByContext(enriched, estimate, undefined, { strategy, reserveOutput: options.maxTokens })
   }
 
   /**
@@ -503,7 +503,7 @@ export class RouterAdapter extends Adapter {
     // any of them. A tier spans models with different windows, so the whole
     // point of advertising the largest one is that the dispatcher then routes by
     // size instead of letting a smaller member reject the prompt.
-    const routed = await this.#routeByContext(llm, chain, options)
+    const routed = await this.#routeByContext(llm, chain, options, tier.contextStrategy)
 
     const tried = []
     let budget = MAX_ATTEMPTS_PER_TURN
@@ -548,6 +548,8 @@ export class RouterAdapter extends Adapter {
             outcome: 'ok',
             provider: member.provider,
             model: member.model,
+            estimate: routed.estimate,
+            ...(Number.isFinite(member.contextWindow) ? { contextWindow: member.contextWindow } : {}),
             ...(usageOf(outcome.chunks) === undefined ? {} : { usage: usageOf(outcome.chunks) }),
           })
           for (const chunk of outcome.chunks) yield chunk

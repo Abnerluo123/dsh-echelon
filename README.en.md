@@ -110,6 +110,21 @@ Worth knowing:
 - **Nothing is hidden while no tier can dispatch.** If every tier lacks a usable member (a fresh install, for instance), hiding is lifted automatically — otherwise the picker would be empty and you could not reach the settings page to fix it.
 - Hiding takes effect on save; the menu refreshes within seconds.
 
+## Selection strategy
+
+A tier chooses among the members that *fit* the request in one of two ways:
+
+| Strategy | Behaviour | Good for |
+|---|---|---|
+| **Chain order** (default) | the first member that fits | predictability; the chain already encodes "cheap first" |
+| **Most free space** | the fitting member with the roomiest window | keeping a long session off a model that barely fits |
+
+One thing worth stating plainly: **compaction timing is set by the window a tier advertises, and that is already the largest in the chain.** Deferring compaction to the biggest member has been in place since 1.1.0; switching members cannot push it later.
+
+"Most free space" solves a different problem: the first member that fits may have very little room left, so it either truncates at the provider or hits its limit and forces a switch. Picking the roomiest keeps the session on a model with room to spare. It does let a pricier or slower model take over sooner, which is why it is off by default.
+
+Every successful log row carries `estimate` (this request's estimated input) and `contextWindow` (the answering member's window), so you can see how close a session is to compaction.
+
 ## Request log
 
 The second tab in settings is a **request log**: one row per request, answering the question a tier makes impossible to answer from the transcript — *which model actually served that turn*.

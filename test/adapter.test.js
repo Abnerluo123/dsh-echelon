@@ -716,3 +716,43 @@ test('a context without a meter still estimates', async () => {
   const chunks = await collect(adapter, 'auto')
   assert.equal(finishOf(chunks).reason.kind, 'stop')
 })
+
+test('a roomy tier answers with the member that has the most room', async () => {
+  // Both members fit a tiny prompt. Chain order would pick 'small'; the tier's
+  // strategy picks 'big' so the session keeps its headroom.
+  const base = tierSettings([
+    { provider: 'small', model: 'one' },
+    { provider: 'big', model: 'two' },
+  ])
+  const { adapter, log } = wire(
+    { ...base, tiers: [{ ...base.tiers[0], contextStrategy: 'roomy' }] },
+    {
+      models: {
+        small: { models: [{ id: 'one', contextWindow: 300_000 }] },
+        big: { models: [{ id: 'two', contextWindow: 1_000_000 }] },
+      },
+      routes: { 'small/one': [answer('small')], 'big/two': [answer('big')] },
+    },
+  )
+  const chunks = await collect(adapter, 'auto')
+  assert.equal(finishOf(chunks).reason.kind, 'stop')
+  const [entry] = log.read().entries
+  assert.equal(entry.provider, 'big', 'headroom won over chain order')
+  assert.equal(entry.contextWindow, 1_000_000, 'the log records the room it had')
+  assert.ok(Number.isFinite(entry.estimate), 'and the size of the request')
+})
+
+test('a default tier still answers with the first member', async () => {
+  const { adapter, log } = wire(
+    tierSettings([{ provider: 'small', model: 'one' }, { provider: 'big', model: 'two' }]),
+    {
+      models: {
+        small: { models: [{ id: 'one', contextWindow: 300_000 }] },
+        big: { models: [{ id: 'two', contextWindow: 1_000_000 }] },
+      },
+      routes: { 'small/one': [answer('small')], 'big/two': [answer('big')] },
+    },
+  )
+  await collect(adapter, 'auto')
+  assert.equal(log.read().entries[0].provider, 'small', 'chain order is still the default')
+})

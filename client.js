@@ -79,6 +79,10 @@ window.__ModuleLoader__.load({
         'member.effortOff': '关闭思考',
         'member.effortHint': '留空则跟随会话选择。选了具体档位，这个成员只用这个档位。',
         'member.context': '上下文长度',
+        'tiers.strategy': '选人策略',
+        'tiers.strategyOrder': '按顺序（第一个装得下的）',
+        'tiers.strategyRoomy': '优先剩余空间最大的',
+        'tiers.strategyHint': '优先剩余空间能减少长对话被挤到刚好够用的模型上；顺序模式更可预测。',
         'member.contextHint': '留空则用模型自己上报的值；填了会覆盖它。挡位按成员里最大的那个上报，请求装不下当前模型时会自动换能装下的成员。',
         'member.maxTokens': '最大输出',
         'member.defaultAuto': '模型默认',
@@ -204,6 +208,10 @@ window.__ModuleLoader__.load({
         'member.effortOff': 'No reasoning',
         'member.effortHint': 'Empty follows the session. A chosen level is the only one this member uses.',
         'member.context': 'Context window',
+        'tiers.strategy': 'Selection',
+        'tiers.strategyOrder': 'Chain order (first that fits)',
+        'tiers.strategyRoomy': 'Most free space first',
+        'tiers.strategyHint': 'Preferring headroom avoids squeezing a long session into a model that barely fits; chain order is more predictable.',
         'member.contextHint': 'Empty uses what the model reports; an override replaces it. The tier advertises the largest member window, and a request too large for one member moves to one that fits.',
         'member.maxTokens': 'Max output',
         'member.defaultAuto': 'Model default',
@@ -879,7 +887,18 @@ window.__ModuleLoader__.load({
                 const { contextWindow: _drop, ...rest } = tier
                 onChange(contextWindow === undefined ? rest : { ...rest, contextWindow })
               },
-            })))),
+            })),
+          h(Field, { label: t('tiers.strategy'), hint: t('tiers.strategyHint') },
+            h('select', {
+              value: tier.contextStrategy ?? 'order', 'aria-label': `${tier.name} ${t('tiers.strategy')}`,
+              onChange: event => {
+                const { contextStrategy: _drop, ...rest } = tier
+                // The default is stored by absence, so a clean document stays clean.
+                onChange(event.target.value === 'order' ? rest : { ...rest, contextStrategy: event.target.value })
+              },
+            },
+            h('option', { value: 'order' }, t('tiers.strategyOrder')),
+            h('option', { value: 'roomy' }, t('tiers.strategyRoomy')))))),
         tier.members.length === 0
           ? h('div', { className: 'mr-empty' }, h('p', null, t('tiers.membersEmpty')))
           : h('div', { className: 'mr-members' }, tier.members.map((member, memberIndex) => h(MemberRow, {
