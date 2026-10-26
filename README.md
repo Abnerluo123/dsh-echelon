@@ -1,4 +1,4 @@
-﻿# Echelon
+# Echelon
 
 > 给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 用的**挡位式模型路由**。把十几个模型收成几个你自己命名的名字，选中一个，背后是一条有序的真实模型链：按序调用、失败重试、自动降级。
 

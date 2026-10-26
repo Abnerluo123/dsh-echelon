@@ -1,4 +1,4 @@
-﻿# Echelon
+# Echelon
 
 > **Tier-based model routing** for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Collapse a dozen models into a few names you choose; behind each name is an ordered chain of real models — called in order, retried, failed over automatically.
 
