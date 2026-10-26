@@ -140,15 +140,86 @@ The file is forgiving: missing fields, wrong types, and out-of-range numbers are
 
 ## Installing
 
-**From the plugin market** (recommended): Plugins → Market, search `dsh-model-router`.
+### Requirements
 
-**From a local directory**: in DSH, Plugins → Installed → Add plugin, and give the absolute path; or
+- **DeepSeek Harness** `>= 0.2.0-rc.1`
+- **Node.js** `>= 22.14.0`
+
+### Option 1: install from GitHub (available now)
 
 ```sh
-dsh plugin --profile <profile> add /absolute/path/to/dsh-model-router
+dsh plugin --profile desktop add Abnerluo123/dsh-model-router
 ```
 
-Restart `dsh` and reload the page; **Model Router** appears in settings.
+Replace `desktop` with your profile name (`dsh profile list` shows them). To pin a release:
+
+```sh
+dsh plugin --profile desktop add Abnerluo123/dsh-model-router#v1.1.3
+```
+
+> **If the install is blocked on `allowBuilds`**: pnpm does not run `prepare` scripts for
+> packages installed from git by default. Add the package to the profile's
+> `pnpm-workspace.yaml` as pnpm instructs, then re-run:
+>
+> ```yaml
+> allowBuilds:
+>   dsh-model-router: true
+> ```
+>
+> This is usually unnecessary for this plugin (it has no build step); follow the
+> prompt if you hit it.
+
+### Option 2: install from the plugin market
+
+Plugins → Market, search `dsh-model-router`.
+
+> The market indexes by npm package name and needs the package published there. If it does not show up, use Option 1.
+
+### Option 3: install from source
+
+```sh
+git clone https://github.com/Abnerluo123/dsh-model-router.git
+dsh plugin --profile desktop add /absolute/path/to/dsh-model-router
+```
+
+Or use **Plugins → Installed → Add plugin** in DSH and give the absolute path.
+
+### After installing
+
+1. **Restart `dsh`** — the plugin recomposes the profile, so a hot reload is not enough.
+2. Reload the page; **Model Router** appears in settings.
+3. Open it and add members to a tier under **Configure**; **Preview** shows what the model picker will look like.
+
+On a fresh install the **Auto** tier is empty, and the plugin therefore hides
+*nothing*: your menu stays exactly as it was until at least one usable member
+exists. That is deliberate — otherwise the menu would be empty and you could not
+reach the settings page to fix it.
+
+### Verifying
+
+Check that the profile manifest registered the plugin (this works regardless of
+where it was installed from):
+
+```sh
+cd "$DSH_HOME/profiles/desktop"
+node -e "const j=require('./package.json');console.log('bundle:', j.dsh.profile.bundles.includes('dsh-model-router'))"
+```
+
+`bundle: true` means it will load. Note that `dsh plugin list` only shows
+*registry* dependencies — a plugin added from a local path or a `file:` spec may
+not appear there. That is pnpm's behaviour, not a failed install.
+
+The clearest proof is the **Settings → Settings file** row in the settings page: if
+it shows a real `settings.json` path, the plugin is loaded.
+
+### Uninstalling
+
+```sh
+dsh plugin --profile desktop remove dsh-model-router
+```
+
+Settings stay in `$DSH_HOME/model-router/settings.json`; delete that file yourself
+to remove them completely.
 
 ## Development
 

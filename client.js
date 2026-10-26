@@ -425,11 +425,11 @@ window.__ModuleLoader__.load({
      * The page's sections, declared once so the tab strip and the body cannot
      * drift apart.
      *
-     * The split follows the questions a user actually arrives with:
-     *   配置 — which tiers exist and what's in them
-     *   设置 — how the router behaves (picker exposure, defaults, log retention)
-     *   预览 — what the model picker will look like, without touching the host
-     *   调用日志 — what happened on that turn?
+     * The order follows the workflow rather than a taxonomy: you build tiers
+     * (配置), check what the picker will look like (预览), then reach for
+     * behaviour switches (设置) and finally the log. Preview sits directly after
+     * 配置 because "did I build what I meant to" is the question you have before
+     * you go changing defaults.
      *
      * 预览 is its own tab rather than the tail of 设置 because it is a *result*
      * you check, not a knob you set: it is read-only, and burying it under the
@@ -437,8 +437,8 @@ window.__ModuleLoader__.load({
      */
     const TABS = [
       { id: 'configure', label: 'tabs.configure' },
-      { id: 'settings', label: 'tabs.settings' },
       { id: 'preview', label: 'tabs.preview' },
+      { id: 'settings', label: 'tabs.settings' },
       { id: 'log', label: 'tabs.log' },
     ]
 
@@ -1361,7 +1361,7 @@ window.__ModuleLoader__.load({
     exports.apply = apply
     exports.inject = inject
     exports.name = 'model-router'
-    exports.__test = { DICT, CSS, makeTierId, fromSeconds, toSeconds, move, setHideRule }
+    exports.__test = { DICT, CSS, TABS, makeTierId, fromSeconds, toSeconds, move, setHideRule }
     return module.exports
   },
 })

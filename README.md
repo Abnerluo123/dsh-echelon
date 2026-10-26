@@ -140,15 +140,77 @@
 
 ## 安装
 
-**从插件市场安装**（推荐）：插件 → 插件市场，搜索 `dsh-model-router`。
+### 前置条件
 
-**从本地目录安装**：在 DSH 的 插件 → 已安装 → 添加插件 里填绝对路径；或者
+- **DeepSeek Harness** `>= 0.2.0-rc.1`
+- **Node.js** `>= 22.14.0`
+
+### 方式一：从 GitHub 安装（当前可用）
 
 ```sh
-dsh plugin --profile <profile> add /absolute/path/to/dsh-model-router
+dsh plugin --profile desktop add Abnerluo123/dsh-model-router
 ```
 
-装完重启 `dsh`，刷新页面后设置里会出现 **模型路由**。
+装到已有 profile 时，把 `desktop` 换成你的 profile 名（`dsh profile list` 可以列出）。
+
+指定版本：
+
+```sh
+dsh plugin --profile desktop add Abnerluo123/dsh-model-router#v1.1.3
+```
+
+> **如果安装被拦在 `allowBuilds`**：pnpm 默认不执行从 git 来源装进来的包的 `prepare` 脚本。按它给出的提示，把包名加进 profile 的 `pnpm-workspace.yaml` 后重跑：
+>
+> ```yaml
+> allowBuilds:
+>   dsh-model-router: true
+> ```
+>
+> 这一步在本插件的常规安装中通常不需要（包不含编译步骤），若遇到按提示处理即可。
+
+### 方式二：从插件市场安装
+
+插件 → 插件市场，搜索 `dsh-model-router`。
+
+> 市场按 npm 包名索引，需要包已发布到 npm。若搜不到，用方式一。
+
+### 方式三：从源码安装
+
+```sh
+git clone https://github.com/Abnerluo123/dsh-model-router.git
+dsh plugin --profile desktop add /absolute/path/to/dsh-model-router
+```
+
+或者在 DSH 的 **插件 → 已安装 → 添加插件** 里填绝对路径。
+
+### 安装后
+
+1. **重启 `dsh`**（插件需要重新组合 profile，热重载不够）。
+2. 刷新页面，设置里会出现 **模型路由**。
+3. 打开它，在 **配置** 里给挡位添加成员；**预览** 可以看到模型选择器将变成什么样。
+
+第一次安装时「自动」挡位是空的，此时插件**不会隐藏任何模型**——菜单保持原样，直到你至少添加一个可用成员。这是刻意的：否则菜单会变成空的，你连设置页都进不去。
+
+### 验证安装
+
+看 profile 的 manifest 是否登记了插件（这几个命令都不依赖插件的安装来源）：
+
+```sh
+cd "$DSH_HOME/profiles/desktop"
+node -e "const j=require('./package.json');console.log('bundle:', j.dsh.profile.bundles.includes('dsh-model-router'))"
+```
+
+`bundle: true` 说明插件会被加载。**注意 `dsh plugin list` 只会列出已保存的依赖**——从本地路径或 `file:` 装进来的插件可能不显示，那是 pnpm 的行为，不代表没装上。
+
+更直接的证据：设置页 **设置 → 配置文件** 会显示 `settings.json` 的实际路径，能显示就说明插件已加载。
+
+### 卸载
+
+```sh
+dsh plugin --profile desktop remove dsh-model-router
+```
+
+配置留在 `$DSH_HOME/model-router/settings.json`，不会自动删除；需要彻底清理时手动删掉该文件。
 
 ## 开发
 

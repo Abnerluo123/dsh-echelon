@@ -330,13 +330,17 @@ test('the summary row is never allowed to collapse to nothing', () => {
 test('the page is split into four tabs that partition the sections', async () => {
   // Regression: the exposure card used to live on 配置 with the tier list, and
   // the preview was buried under the settings form. Both made the page a scroll.
-  const { DICT } = loadBundle().__test
+  const { DICT, TABS } = loadBundle().__test
   for (const key of ['tabs.configure', 'tabs.settings', 'tabs.preview', 'tabs.log']) {
     assert.equal(typeof DICT.zh[key], 'string', `missing tab label ${key}`)
   }
   assert.equal(DICT.zh['tabs.configure'], '配置')
   assert.equal(DICT.zh['tabs.settings'], '设置')
   assert.equal(DICT.zh['tabs.preview'], '预览')
+
+  // The order is the workflow, not a taxonomy: build tiers → check the result →
+  // reach for behaviour switches → read the log.
+  assert.deepEqual(TABS.map(tab => tab.id), ['configure', 'preview', 'settings', 'log'])
 
   // Render and confirm each tab shows only its own cards.
   const exports = loadBundle()
