@@ -65,7 +65,13 @@ function upstream(route, script) {
     imageRequestPricing: () => undefined,
     imageRequestTarget: (_id, _model, image) => ({ width: image.width, height: image.height, maxBytes: image.bytes }),
     listModels: id => Promise.resolve(script.models.map(model => ({ provider: id, id: model, name: model }))),
-    resolveModel: (id, model) => Promise.resolve({ provider: id, id: model, name: model, inputModalities: ['text'] }),
+    resolveModel: (id, model) => Promise.resolve({
+      provider: id,
+      id: model,
+      name: model,
+      inputModalities: ['text'],
+      ...(script.windows?.[model] === undefined ? {} : { context: { contextWindow: script.windows[model] } }),
+    }),
     prepareCall: (id, model) => Promise.resolve({
       model: { provider: id, id: model, name: model, inputModalities: ['text'] },
       stream: options => streamOf(script.outcomes.shift() ?? { kind: 'ok', text: 'default' }, calls, `${id}/${model}`, options),
@@ -242,4 +248,32 @@ test('a tier may name another routing plugin’s route (Fusion compatibility)', 
   }))
   assert.equal(finishOf(chunks).reason.kind, 'stop')
   assert.equal(textOf(chunks), 'fell back past fusion')
+})
+
+test('a tier advertising its largest window routes a big request past a small member', { skip: !hasRuntime }, async () => {
+  // The reported scenario end-to-end through the real registry: one tier mixing
+  // a 300K and a 1M model. `resolveModelInfo` must report 1M (the probe DSH
+  // shows), and a prompt too large for the 300K member must reach the 1M one.
+  const { ctx } = await boot(
+    settingsWith([
+      { provider: 'small', model: 'one', attempts: 0 },
+      { provider: 'big', model: 'two', attempts: 0 },
+    ]),
+    {
+      small: { models: ['one'], windows: { one: 300_000 }, outcomes: [] },
+      big: { models: ['two'], windows: { two: 1_000_000 }, outcomes: [{ kind: 'ok', text: 'big handled it' }] },
+    },
+  )
+  const info = await ctx.llm.resolveModelInfo('model-router', 'auto')
+  assert.equal(info.context.contextWindow, 1_000_000, 'the tier advertises the largest member window')
+
+  // Roughly 700K tokens under the 4-chars-per-token heuristic.
+  const huge = 'x'.repeat(2_800_000)
+  const chunks = await collect(ctx.llm.stream({
+    provider: 'model-router',
+    model: 'auto',
+    messages: [{ role: 'user', content: [{ type: 'text', text: huge }] }],
+  }))
+  assert.equal(finishOf(chunks).reason.kind, 'stop')
+  assert.equal(textOf(chunks), 'big handled it')
 })

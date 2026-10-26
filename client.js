@@ -78,7 +78,7 @@ window.__ModuleLoader__.load({
         'member.effortOff': '关闭思考',
         'member.effortHint': '留空则跟随会话选择。选了具体档位，这个成员只用这个档位。',
         'member.context': '上下文长度',
-        'member.contextHint': '留空则用模型自己上报的值。填了会覆盖上报值，挡位按成员里最小的那个算。',
+        'member.contextHint': '留空则用模型自己上报的值；填了会覆盖它。挡位按成员里最大的那个上报，请求装不下当前模型时会自动换能装下的成员。',
         'member.maxTokens': '最大输出',
         'member.defaultAuto': '模型默认',
         'member.enabled': '启用',
@@ -125,7 +125,7 @@ window.__ModuleLoader__.load({
         'tabs.log': '调用日志',
 
         'log.title': '调用日志',
-        'log.hint': '每次请求一条：最终由哪个模型作答、试过哪些成员、各自为什么失败、耗时多久。只存在内存里。',
+        'log.hint': '每次请求一条：最终由哪个模型作答、试过哪些成员、各自为什么失败或跳过（上下文装不下）、耗时多久。只存在内存里。',
         'log.refresh': '刷新',
         'log.clear': '清空',
         'log.empty': '还没有记录。发一条消息后再回来看看。',
@@ -141,6 +141,8 @@ window.__ModuleLoader__.load({
         'log.attempt': '第 {n} 次',
         'log.elapsed': '{ms} ms',
         'log.tokens': '{input} 输入 / {output} 输出',
+        'log.skipped': '跳过',
+        'log.contextSkip': '上下文装不下',
         'log.dropped': '（另有 {n} 次尝试未显示）',
 
         'preview.title': '预览：模型选择器会显示',
@@ -196,7 +198,7 @@ window.__ModuleLoader__.load({
         'member.effortOff': 'No reasoning',
         'member.effortHint': 'Empty follows the session. A chosen level is the only one this member uses.',
         'member.context': 'Context window',
-        'member.contextHint': 'Empty uses what the model reports. An override replaces it; the tier reports the smallest member value.',
+        'member.contextHint': 'Empty uses what the model reports; an override replaces it. The tier advertises the largest member window, and a request too large for one member moves to one that fits.',
         'member.maxTokens': 'Max output',
         'member.defaultAuto': 'Model default',
         'member.enabled': 'Enabled',
@@ -243,7 +245,7 @@ window.__ModuleLoader__.load({
         'tabs.log': 'Request log',
 
         'log.title': 'Request log',
-        'log.hint': 'One row per request: which model answered, every member tried, why each was dropped, and how long it took. In memory only.',
+        'log.hint': 'One row per request: which model answered, every member tried, why each failed or was skipped (context too large), and how long it took. In memory only.',
         'log.refresh': 'Refresh',
         'log.clear': 'Clear',
         'log.empty': 'Nothing yet. Send a message, then come back.',
@@ -259,6 +261,8 @@ window.__ModuleLoader__.load({
         'log.attempt': 'try {n}',
         'log.elapsed': '{ms} ms',
         'log.tokens': '{input} in / {output} out',
+        'log.skipped': 'skipped',
+        'log.contextSkip': 'does not fit the context',
         'log.dropped': '({n} more attempts hidden)',
 
         'preview.title': 'Preview: the picker will show',
@@ -375,6 +379,7 @@ window.__ModuleLoader__.load({
 .mr-badge.retry{background:var(--dsw-alias-state-warn-label,#9a6700);color:#fff}
 .mr-badge.failover{background:var(--dsw-alias-state-error-primary,#b35900);color:#fff}
 .mr-badge.aborted{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
+.mr-badge.skipped{background:transparent;border:1px dashed var(--dsw-alias-border-l2);color:var(--dsw-alias-label-tertiary)}
 .mr-log-usage{font-size:11px;color:var(--dsw-alias-label-tertiary)}
 .mr-log-empty{padding:18px;text-align:center;color:var(--dsw-alias-label-secondary);font-size:13px}
 .mr-code{font-family:var(--dsw-font-mono,ui-monospace,monospace);font-size:11px;color:var(--dsw-alias-label-tertiary);overflow-wrap:anywhere}
@@ -745,18 +750,24 @@ window.__ModuleLoader__.load({
 
     /** One logged attempt: which member, which try, and how it ended. */
     function LogAttempt({ attempt }) {
-      const badge = attempt.outcome === 'ok' ? 'ok'
-        : attempt.outcome === 'retry' ? 'retry'
-          : attempt.outcome === 'aborted' ? 'aborted' : 'failover'
-      const label = attempt.outcome === 'ok' ? t('log.ok')
-        : attempt.outcome === 'retry' ? t('log.retry')
-          : attempt.outcome === 'aborted' ? t('log.aborted') : t('log.failover')
+      const skipped = attempt.outcome === 'skipped'
+      const badge = skipped ? 'skipped'
+        : attempt.outcome === 'ok' ? 'ok'
+          : attempt.outcome === 'retry' ? 'retry'
+            : attempt.outcome === 'aborted' ? 'aborted' : 'failover'
+      const label = skipped ? t('log.skipped')
+        : attempt.outcome === 'ok' ? t('log.ok')
+          : attempt.outcome === 'retry' ? t('log.retry')
+            : attempt.outcome === 'aborted' ? t('log.aborted') : t('log.failover')
       return h('div', { className: 'mr-log-attempt' },
         h('span', { className: `mr-badge ${badge}` }, label),
         h('span', { className: 'mr-log-route' }, `${attempt.provider}/${attempt.model}`),
-        h('span', null, t('log.attempt', { n: attempt.attempt })),
+        // A skipped member was never dialled, so "try 0" would be misleading.
+        skipped ? null : h('span', null, t('log.attempt', { n: attempt.attempt })),
         attempt.durationMs === undefined ? null : h('span', null, t('log.elapsed', { ms: attempt.durationMs })),
-        attempt.code === undefined ? null : h('span', null, attempt.code))
+        skipped && attempt.message !== undefined
+          ? h('span', { title: attempt.message }, t('log.contextSkip'))
+          : attempt.code === undefined ? null : h('span', null, attempt.code))
     }
 
     /** One logged request: the outcome, the winner, and the chain behind it. */

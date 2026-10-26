@@ -394,6 +394,61 @@ export function tierChain(tier, available) {
 }
 
 /**
+ * Order a chain for one request's context size.
+ *
+ * The rule is the user's rule: keep the chain order (which encodes cheap-first,
+ * strong-later), but never hand a request to a member that cannot hold it. The
+ * first *fitting* member in order therefore wins, and members skipped for size
+ * are reported separately so the request log can explain the jump.
+ *
+ * When nothing fits, the largest window in the chain is tried anyway: the
+ * provider's own rejection is more informative than a synthetic one, and a
+ * slightly optimistic estimate should not lose a turn that would have worked.
+ * @param {Array<object>} chain - dispatch chain, each entry optionally carrying a resolved `contextWindow`.
+ * @param {number} inputTokens - estimated input size of the request.
+ * @param {(member: object) => number | undefined} [windowOf] - resolves a member's window when the entry does not carry one.
+ * @returns {{ordered: Array<object>, skipped: Array<{provider: string, model: string, window: number, usable: number}>, estimate: number, fits: boolean}} the reordered chain and what was skipped.
+ */
+export function orderByContext(chain, inputTokens, windowOf) {
+  const fits = []
+  const skipped = []
+  for (const member of chain) {
+    const window = member.contextWindow ?? (windowOf === undefined ? undefined : windowOf(member))
+    if (!Number.isFinite(window) || window <= 0) {
+      // An unknown window is not evidence of a small one.
+      fits.push(member)
+      continue
+    }
+    const reserve = member.maxTokens
+    const usable = Math.max(window - Math.max(Math.ceil(window * 0.02), 512) - (Number.isFinite(reserve) ? reserve : 0), 0)
+    if (inputTokens <= usable) {
+      fits.push(member)
+      continue
+    }
+    skipped.push({ provider: member.provider, model: member.model, window, usable })
+  }
+  if (fits.length > 0) return { ordered: fits, skipped, estimate: inputTokens, fits: true }
+
+  // Nothing holds it. Try the roomiest member so the failure is the provider's
+  // real one rather than a guess, but keep the skip list for the log.
+  let biggest
+  let biggestWindow = -1
+  for (const member of chain) {
+    const window = member.contextWindow ?? (windowOf === undefined ? undefined : windowOf(member))
+    if (Number.isFinite(window) && window > biggestWindow) {
+      biggestWindow = window
+      biggest = member
+    }
+  }
+  return {
+    ordered: biggest === undefined ? chain : [biggest],
+    skipped,
+    estimate: inputTokens,
+    fits: false,
+  }
+}
+
+/**
  * Backoff before one retry of the same member.
  * @param {number} attempt - 0-based attempt index that just failed.
  * @returns {number} milliseconds to wait.

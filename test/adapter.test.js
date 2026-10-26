@@ -327,7 +327,7 @@ test('advertised tiers are ordered, enabled-only, and include the empty default'
   assert.deepEqual(models.map(model => model.name), ['快', '慢'])
 })
 
-test('a tier reports the smallest member window and the shared efforts', async () => {
+test('a tier reports the largest member window and the shared efforts', async () => {
   const { adapter } = wire(
     tierSettings([{ provider: 'a', model: 'big' }, { provider: 'b', model: 'small' }]),
     {
@@ -339,7 +339,10 @@ test('a tier reports the smallest member window and the shared efforts', async (
     },
   )
   const info = await adapter.resolveModel('model-router', 'auto')
-  assert.equal(info.context.contextWindow, 128_000)
+  // The largest window, because the dispatcher routes each request to a member
+  // that fits it. Reporting the smallest would throw away the big model's
+  // capacity for every request.
+  assert.equal(info.context.contextWindow, 1_000_000)
   assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['medium', 'high'])
   assert.equal(info.reasoning.defaultEffort, 'medium')
 })
@@ -422,10 +425,102 @@ test('a tier override applies to every member that does not set its own', async 
     },
   )
   const info = await adapter.resolveModel('model-router', 'auto')
-  // The member's 32K wins over the tier's 100K, and the tier reports the
-  // smallest effective value across the chain.
-  assert.equal(info.context.contextWindow, 32_000)
+  // `a` inherits the tier's 100K (an explicit tier window beats the model's
+  // reported 200K, which is the point of the override), and `b` keeps its own
+  // 32K. The tier advertises the largest of those effective windows.
+  assert.equal(info.context.contextWindow, 100_000)
   assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['high'])
+})
+
+test('a request too large for the head member routes to the one that fits', async () => {
+  // The reported case: one tier mixing a 300K and a 1M model. The tier now
+  // advertises 1M, and a large request must skip the 300K member instead of
+  // being handed to it and rejected.
+  const { adapter, llm, log } = wire(
+    tierSettings([{ provider: 'small', model: 'one', attempts: 0 }, { provider: 'big', model: 'two' }]),
+    {
+      models: {
+        small: { models: [{ id: 'one', contextWindow: 300_000 }] },
+        big: { models: [{ id: 'two', contextWindow: 1_000_000 }] },
+      },
+      routes: { 'small/one': [fail('CONTEXT', 'too long')], 'big/two': [answer('big one answered')] },
+    },
+  )
+  const info = await adapter.resolveModel('model-router', 'auto')
+  assert.equal(info.context.contextWindow, 1_000_000, 'the tier advertises the largest window')
+
+  // ~700K tokens of text: fits 1M, not 300K.
+  const huge = 'x'.repeat(2_800_000)
+  const chunks = await collect(adapter, 'auto', { messages: [{ role: 'user', content: [{ type: 'text', text: huge }] }] })
+  assert.equal(finishOf(chunks).reason.kind, 'stop')
+  assert.deepEqual(llm.calls, ['big/two'], 'the small member must never be dialled')
+
+  const [entry] = log.read().entries
+  const skipped = entry.attempts.find(attempt => attempt.outcome === 'skipped')
+  assert.equal(skipped.provider, 'small', 'the skip is recorded, not silent')
+  assert.equal(skipped.code, 'CONTEXT_TOO_SMALL')
+  assert.match(skipped.message, /300000/)
+})
+
+test('a small request still goes to the first member in order', async () => {
+  const { adapter, llm } = wire(
+    tierSettings([{ provider: 'small', model: 'one' }, { provider: 'big', model: 'two' }]),
+    {
+      models: {
+        small: { models: [{ id: 'one', contextWindow: 300_000 }] },
+        big: { models: [{ id: 'two', contextWindow: 1_000_000 }] },
+      },
+      routes: { 'small/one': [answer('cheap first')], 'big/two': [answer('unused')] },
+    },
+  )
+  const chunks = await collect(adapter, 'auto', { messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] })
+  assert.equal(finishOf(chunks).reason.kind, 'stop')
+  assert.deepEqual(llm.calls, ['small/one'], 'context routing must not reorder what already fits')
+})
+
+test('when nothing fits, the roomiest member is tried so the error is the real one', async () => {
+  const { adapter, llm } = wire(
+    tierSettings([{ provider: 'a', model: 'one', attempts: 0 }, { provider: 'b', model: 'two', attempts: 0 }]),
+    {
+      models: {
+        a: { models: [{ id: 'one', contextWindow: 8_000 }] },
+        b: { models: [{ id: 'two', contextWindow: 16_000 }] },
+      },
+      routes: { 'a/one': [fail('CONTEXT_WINDOW_EXCEEDED')], 'b/two': [answer('roomiest tried')] },
+    },
+  )
+  const huge = 'x'.repeat(4_000_000)
+  const chunks = await collect(adapter, 'auto', { messages: [{ role: 'user', content: [{ type: 'text', text: huge }] }] })
+  assert.equal(finishOf(chunks).reason.kind, 'stop')
+  assert.deepEqual(llm.calls, ['b/two'], 'the largest window is attempted rather than refusing locally')
+})
+
+test('a member with no reported window is never skipped for size', async () => {
+  const { adapter, llm } = wire(
+    tierSettings([{ provider: 'unknown', model: 'one' }, { provider: 'known', model: 'two' }]),
+    {
+      models: {
+        unknown: { models: [{ id: 'one' }] },
+        known: { models: [{ id: 'two', contextWindow: 1_000_000 }] },
+      },
+      routes: { 'unknown/one': [answer('no window, still dialled')], 'known/two': [answer('unused')] },
+    },
+  )
+  const huge = 'x'.repeat(2_000_000)
+  const chunks = await collect(adapter, 'auto', { messages: [{ role: 'user', content: [{ type: 'text', text: huge }] }] })
+  assert.equal(finishOf(chunks).reason.kind, 'stop')
+  assert.deepEqual(llm.calls, ['unknown/one'], 'an unknown window is not evidence of a small one')
+})
+
+test('a single-member tier skips the routing work entirely', async () => {
+  const { adapter, llm } = wire(
+    tierSettings([{ provider: 'a', model: 'one' }]),
+    { models: { a: { models: [{ id: 'one', contextWindow: 5 }] } }, routes: { 'a/one': [answer('still dispatched')] } },
+  )
+  const huge = 'x'.repeat(100_000)
+  const chunks = await collect(adapter, 'auto', { messages: [{ role: 'user', content: [{ type: 'text', text: huge }] }] })
+  assert.equal(finishOf(chunks).reason.kind, 'stop')
+  assert.deepEqual(llm.calls, ['a/one'], 'with nothing to choose between, the member is used as-is')
 })
 
 test('the log records which member answered and why earlier ones were dropped', async () => {

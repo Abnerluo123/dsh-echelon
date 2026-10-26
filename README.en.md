@@ -57,7 +57,13 @@ A deterministic failure (an expired key, say) would fail identically on a retry,
 
 **One ending per turn.** Every path ends in exactly one terminal chunk — either a real answer, or one error that lists which members were tried and why each failed.
 
-**Context windows intersect.** A tier advertises the **smallest** context window among its members and the **shared** reasoning efforts. Put one 128K model in a chain and the whole tier reports 128K — otherwise a request would die on the fallback with "context exceeded" instead of being handled.
+**Context windows route, they do not intersect.** A tier advertises the **largest** window in its chain, so adding a 1M model is not capped by a 300K companion. At dispatch the plugin estimates the request's input size, skips members that cannot hold it, and hands the request to the first member that can; skipped members are recorded in the request log as `CONTEXT_TOO_SMALL`.
+
+The trade-offs:
+
+- Sizes come from DSH's own `tokenMeter` (the same number compaction and occupancy use), falling back to the documented 4-characters-per-token heuristic. Both are *estimates*, and both reserve output room plus a 2% margin.
+- If nothing in the chain fits, the roomiest member is tried anyway: a real upstream rejection is more useful than a local guess.
+- A member that reports no window is **never** skipped — nothing proved it small.
 
 ## Hiding models
 
@@ -160,6 +166,7 @@ Source layout:
 | `src/adapter.js` | The adapter: chain dispatch, buffering, retries, failover, log writes |
 | `src/catalog.js` | Catalog filter: hide models from the picker |
 | `src/log.js` | In-memory request log: bounded, append-at-finish, never on disk |
+| `src/tokens.js` | Request-size estimation (DSH token meter, documented fallback) and context-fit ordering |
 | `src/http.js` | Settings and log API plus the same-origin trust check |
 | `src/store.js` | Atomic writes plus an mtime-invalidated cache |
 | `client.js` | Browser half: the settings page and the log view |

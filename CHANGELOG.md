@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.1.0
+
+### Context-size routing
+
+A tier may mix models with different windows (a 1M model beside a 300K one).
+Previously the tier advertised the *smallest* window, which capped every
+request at the weakest member and threw away the big model's capacity.
+
+- A tier now advertises the **largest** window in its chain; the picker shows
+  what the tier can really take.
+- At dispatch the request's input size is estimated and members that cannot
+  hold it are skipped, so the first *fitting* member wins while the user's
+  chain order is preserved.
+- Skipped members are logged with code `CONTEXT_TOO_SMALL` and the numbers
+  behind the decision, and shown as a distinct badge in the log tab.
+- When nothing fits, the roomiest member is attempted so the failure is the
+  provider's real one rather than a local guess.
+- A member reporting no window is never skipped: an unknown size is not
+  evidence of a small one.
+- Sizes come from DSH's own `tokenMeter` when mounted, falling back to the
+  documented 4-characters-per-token heuristic. Both reserve the member's output
+  budget plus a small safety margin.
+
+Settings stay backward compatible: existing documents load unchanged and the
+new behaviour needs no configuration.
+
 ## 1.0.0
 
 First release.

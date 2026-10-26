@@ -30,11 +30,13 @@ import {
   AUTO_TIER_ID,
   ROUTER_PROVIDER,
   isRetryable,
+  orderByContext,
   retryDelay,
   tierChain,
 } from './config.js'
 import { RequestLog, usageOf } from './log.js'
 import { SettingsStore } from './store.js'
+import { estimateRequestTokens } from './tokens.js'
 
 /** How many member attempts one turn may spend before the chain is declared dead. */
 const MAX_ATTEMPTS_PER_TURN = 64
@@ -318,10 +320,15 @@ export class RouterAdapter extends Adapter {
     return {
       ...base,
       ...(settings.showTierDescriptions ? { description: describeTier(tier) } : {}),
-      // Only claim a window when every member reported one: a partial answer
-      // here would under- or over-state what the chain can actually take.
-      ...(windows.length === 0 || windows.length !== chain.length ? {} : { context: { contextWindow: Math.min(...windows) } }),
-      ...(defaults.length === chain.length ? { defaultMaxTokens: Math.min(...defaults) } : {}),
+      // The tier advertises the LARGEST window in its chain, not the smallest.
+      // Advertising the smallest would cap every request at the weakest member
+      // and throw away the big model's capacity; the dispatcher instead picks a
+      // member that can actually hold each request (see `orderByContext`), and
+      // falls back to the roomiest member when none can.
+      ...(windows.length === 0 ? {} : { context: { contextWindow: Math.max(...windows) } }),
+      // Output is still the conservative number: a request may land on any
+      // member, and claiming the largest output cap would overstate the floor.
+      ...(defaults.length === 0 ? {} : { defaultMaxTokens: Math.min(...defaults) }),
       ...(efforts === undefined ? {} : { reasoning: efforts }),
     }
   }
@@ -369,6 +376,44 @@ export class RouterAdapter extends Adapter {
   }
 
   /**
+   * Resolve each member's real context window and order the chain by fit.
+   *
+   * Windows are resolved per turn rather than cached: a gateway can change what
+   * it advertises, and a stale window would route a large request into a small
+   * model for the rest of the process's life. The resolution is bounded (one
+   * `resolveModelInfo` per member) and only runs when the chain has more than one
+   * member, because a single-member tier has nothing to choose between.
+   * @param {object} llm - the live LLM service.
+   * @param {Array<object>} chain - the tier's dispatch chain.
+   * @param {object} options - the request about to be dispatched.
+   * @returns {Promise<{ordered: Array<object>, skipped: Array<object>, estimate: number, fits: boolean}>} routing decision.
+   */
+  async #routeByContext(llm, chain, options) {
+    const estimate = estimateRequestTokens(options, this.ctx?.tokenMeter).inputTokens
+    if (chain.length === 1) {
+      return { ordered: chain, skipped: [], estimate, fits: true }
+    }
+    const windows = new Map()
+    await Promise.all(chain.map(async member => {
+      try {
+        const info = await llm.resolveModelInfo?.(member.provider, member.model, options.signal)
+        const window = member.contextWindow ?? info?.context?.contextWindow
+        if (Number.isFinite(window) && window > 0) {
+          windows.set(`${member.provider}/${member.model}`, window)
+        }
+      } catch {
+        // An unresolvable member is left without a window, so `orderByContext`
+        // keeps it eligible rather than silently dropping the only lane.
+      }
+    }))
+    const enriched = chain.map(member => {
+      const window = windows.get(`${member.provider}/${member.model}`)
+      return window === undefined ? member : { ...member, contextWindow: window }
+    })
+    return orderByContext(enriched, estimate)
+  }
+
+  /**
    * Dispatch one tier down its chain.
    *
    * The member order is the user's order. Each member is tried up to
@@ -409,13 +454,31 @@ export class RouterAdapter extends Adapter {
       return
     }
 
+    // Pick the members that can actually hold this request *before* dialling
+    // any of them. A tier spans models with different windows, so the whole
+    // point of advertising the largest one is that the dispatcher then routes by
+    // size instead of letting a smaller member reject the prompt.
+    const routed = await this.#routeByContext(llm, chain, options)
+
     const tried = []
     let budget = MAX_ATTEMPTS_PER_TURN
     // One log entry per turn, committed exactly once from whichever branch
     // settles it. It is also how the settings page answers "which model actually
     // served that turn", which the transcript cannot show for a tier.
     const turn = this.#log.begin({ tier: tier.id, tierName: tier.name })
-    for (const member of chain) {
+    for (const skipped of routed.skipped) {
+      // Recorded as its own attempt kind so the log explains the jump instead of
+      // looking like the member was never configured.
+      turn.attempt({
+        provider: skipped.provider,
+        model: skipped.model,
+        attempt: 0,
+        outcome: 'skipped',
+        code: 'CONTEXT_TOO_SMALL',
+        message: `需要 ${routed.estimate} tokens，可用 ${skipped.usable} / ${skipped.window}`,
+      })
+    }
+    for (const member of routed.ordered) {
       const label = `${member.provider}/${member.model}`
       const attempts = Math.max(member.attempts, 0) + 1
       const idleTimeoutMs = member.idleTimeoutMs ?? settings.defaultIdleTimeoutMs
