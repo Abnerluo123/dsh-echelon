@@ -849,3 +849,148 @@ test('a text-only tier does not claim vision', async () => {
   assert.deepEqual((await adapter.listModels('model-router'))[0].inputModalities, ['text'], 'a model that discloses nothing stays text')
   assert.deepEqual((await adapter.resolveModel('model-router', 'auto')).inputModalities, ['text'])
 })
+
+test('output streams as it arrives instead of arriving in one burst', async () => {
+  // Regression: every chunk used to be buffered and flushed at the end, which
+  // made time-to-first-token equal the whole generation and let the harness
+  // report an absurd throughput (it divides output tokens by the observed
+  // generation span, which was ~0).
+  const store = makeStore(tierSettings([{ provider: 'p', model: 'm' }]))
+  const adapter = new RouterAdapter({ store, logger: {} })
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+  adapter.ctx = { llm: {
+    listProviders: () => [{ id: 'p', name: 'p' }],
+    resolveModelInfo: async (provider, model) => ({ provider, id: model, name: model }),
+    prepareCall: async config => ({
+      config: { ...config, maxTokens: 0, temperature: undefined, stop: undefined },
+      stream: async function* () {
+        for (let index = 0; index < 3; index += 1) {
+          await sleep(30)
+          yield { type: 'text-delta', text: `c${index}` }
+        }
+        yield { type: 'finish', reason: { kind: 'stop', stopReason: 'end' } }
+      },
+    }),
+  } }
+
+  const arrivals = []
+  for await (const chunk of adapter.stream({ provider: 'model-router', model: 'auto', messages: [] })) {
+    if (chunk.type === 'text-delta') arrivals.push(Date.now())
+  }
+  assert.equal(arrivals.length, 3)
+  const span = arrivals.at(-1) - arrivals[0]
+  assert.ok(span >= 40, `chunks must be spaced by upstream timing, saw ${span}ms`)
+})
+
+test('reasoning stays hidden until the answer commits', async () => {
+  // The failover guarantee: a lane that only thinks and then dies must not leak
+  // its reasoning. Once text commits, later chunks flow immediately.
+  const store = makeStore(tierSettings([{ provider: 'dead', model: 'one', attempts: 0 }, { provider: 'live', model: 'two' }]))
+  const adapter = new RouterAdapter({ store, logger: {} })
+  adapter.ctx = { llm: makeLlm({
+    models: { dead: { models: [{ id: 'one' }] }, live: { models: [{ id: 'two' }] } },
+    routes: {
+      'dead/one': [{ kind: 'ok', chunks: [{ type: 'reasoning-delta', text: 'secret thinking' }] }],
+      'live/two': [answer('real answer')],
+    },
+  }) }
+  const chunks = await collect(adapter, 'auto')
+  assert.equal(finishOf(chunks).reason.kind, 'stop')
+  assert.ok(!chunks.some(chunk => chunk.type === 'reasoning-delta' && String(chunk.text).includes('secret')), 'the dead lane reasoning must not leak')
+})
+
+test('a mid-stream failure does not print a second answer', async () => {
+  // Once output is visible a failover would append another answer under the
+  // first, which reads as the model contradicting itself. Report the break.
+  const store = makeStore(tierSettings([{ provider: 'a', model: 'one', attempts: 0 }, { provider: 'b', model: 'two' }]))
+  const adapter = new RouterAdapter({ store, logger: {} })
+  const calls = []
+  adapter.ctx = { llm: {
+    listProviders: () => [{ id: 'a', name: 'a' }, { id: 'b', name: 'b' }],
+    resolveModelInfo: async (provider, model) => ({ provider, id: model, name: model }),
+    prepareCall: async config => {
+      calls.push(`${config.provider}/${config.model}`)
+      return {
+        config: { ...config, maxTokens: 0, temperature: undefined, stop: undefined },
+        stream: async function* () {
+          if (config.provider === 'a') {
+            yield { type: 'text-delta', text: 'partial answer' }
+            yield { type: 'finish', reason: { kind: 'error', failure: { code: 'SERVER', message: 'upstream died' } } }
+            return
+          }
+          yield { type: 'text-delta', text: 'second answer' }
+          yield { type: 'finish', reason: { kind: 'stop', stopReason: 'end' } }
+        },
+      }
+    },
+  } }
+  const chunks = await collect(adapter, 'auto')
+  assert.deepEqual(calls, ['a/one'], 'no second member was dialled after output was shown')
+  assert.equal(finishOf(chunks).reason.kind, 'error')
+  assert.ok(!chunks.some(chunk => chunk.type === 'text-delta' && chunk.text.includes('second')), 'no duplicate answer')
+})
+
+test('a forced-vision member is used even when the model reports nothing', async () => {
+  // Many gateways serve vision without disclosing inputModalities. The override
+  // is how a user fixes that without waiting for the adapter to catch up.
+  const { adapter, log } = wire(
+    tierSettings([{ provider: 'silent', model: 'one', seesImages: true }, { provider: 'blind', model: 'two' }]),
+    {
+      models: { silent: { models: [{ id: 'one' }] }, blind: { models: [{ id: 'two', inputModalities: ['text'] }] } },
+      routes: { 'silent/one': [answer('forced')], 'blind/two': [answer('blind')] },
+    },
+  )
+  await collect(adapter, 'auto', { messages: IMAGE_MESSAGE })
+  assert.equal(log.read().entries[0].provider, 'silent', 'the override made it eligible')
+})
+
+test('a forced-blind member is skipped for images despite reporting vision', async () => {
+  // The other direction: a model that claims image support but the user knows
+  // its endpoint rejects images.
+  const { adapter, log } = wire(
+    tierSettings([{ provider: 'liar', model: 'one', seesImages: false }, { provider: 'eyes', model: 'two' }]),
+    {
+      models: {
+        liar: { models: [{ id: 'one', inputModalities: ['text', 'image'] }] },
+        eyes: { models: [{ id: 'two', inputModalities: ['text', 'image'] }] },
+      },
+      routes: { 'liar/one': [answer('liar')], 'eyes/two': [answer('eyes')] },
+    },
+  )
+  await collect(adapter, 'auto', { messages: IMAGE_MESSAGE })
+  assert.equal(log.read().entries[0].provider, 'eyes', 'the override removed it from the candidates')
+})
+
+test('a forced-vision member makes the tier advertise image', async () => {
+  const { adapter } = wire(
+    tierSettings([{ provider: 'silent', model: 'one', seesImages: true }]),
+    { models: { silent: { models: [{ id: 'one' }] } }, routes: {} },
+  )
+  assert.deepEqual((await adapter.listModels('model-router'))[0].inputModalities, ['text', 'image'])
+  assert.deepEqual((await adapter.resolveModel('model-router', 'auto')).inputModalities, ['text', 'image'])
+})
+
+test('several vision members keep chain order among themselves', async () => {
+  // "Does it skip every blind member?" — yes, but only the blind ones; the
+  // surviving candidates still follow the user's order.
+  const { adapter, log } = wire(
+    tierSettings([
+      { provider: 'blind', model: 'b1' },
+      { provider: 'eyes', model: 'e1' },
+      { provider: 'blind', model: 'b2' },
+      { provider: 'eyes', model: 'e2' },
+    ]),
+    {
+      models: {
+        blind: { models: [{ id: 'b1', inputModalities: ['text'] }, { id: 'b2', inputModalities: ['text'] }] },
+        eyes: { models: [{ id: 'e1', inputModalities: ['text', 'image'] }, { id: 'e2', inputModalities: ['text', 'image'] }] },
+      },
+      routes: { 'eyes/e1': [answer('first eyes')], 'eyes/e2': [answer('second eyes')] },
+    },
+  )
+  await collect(adapter, 'auto', { messages: IMAGE_MESSAGE })
+  const entry = log.read().entries[0]
+  assert.equal(entry.provider, 'eyes')
+  assert.equal(entry.model, 'e1', 'the earlier of the vision members wins')
+  assert.equal(entry.attempts.filter(attempt => attempt.code === 'NO_VISION').length, 2, 'both blind members are reported')
+})

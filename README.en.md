@@ -116,7 +116,25 @@ A tier declares `['text', 'image']` as soon as **any** member can see images —
 
 When a request actually carries an image, the router skips members that cannot see it and hands the turn to one that can. Text-only requests are unaffected and keep the chain order.
 
-**Settings → Advanced → Route images to a model that can see** controls this (on by default). Turning it off keeps chain order — the image is then flattened to text by DSH, which is only useful for debugging.
+**Settings → Advanced → Route images to a model that can see** controls this (on by default).
+
+### Vision override
+
+Several gateways serve images without disclosing `inputModalities`, so they get treated as text-only. Each member's vision setting can be forced:
+
+| Value | Meaning |
+|---|---|
+| Follow the model (default) | use the adapter's declaration; undeclared means text-only |
+| Force: sees images | treat it as vision-capable even without a declaration |
+| Force: cannot see | never send it an image, even if it claims support |
+
+### Which members are skipped for an image
+
+Only when the request actually carries an image **and** the switch is on:
+
+- every member that cannot see is skipped for that turn, each logged as `NO_VISION`;
+- the members that can see still follow your chain order;
+- text-only requests are unaffected. Turning it off keeps chain order — the image is then flattened to text by DSH, which is only useful for debugging.
 
 If no member in the tier can see, the turn still goes out (with the image converted to text), but the request log records `NO_VISION_MEMBER` so it is clear the tier could not read the image, rather than looking like the model simply misunderstood it.
 

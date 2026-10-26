@@ -92,6 +92,11 @@ window.__ModuleLoader__.load({
         'member.down': '下移',
         'member.missing': '该模型已不在目录中',
         'member.vision': '支持图像',
+        'member.seesImages': '视觉能力',
+        'member.seesImagesAuto': '跟随模型上报',
+        'member.seesImagesYes': '强制支持图像',
+        'member.seesImagesNo': '强制不支持',
+        'member.seesImagesHint': '模型没上报但实际能看图时选「强制支持」。没写出这个字段的模型默认按不支持处理。',
         'member.probe': '检测',
         'member.probeOk': '可用',
         'member.probeFail': '不可用',
@@ -224,6 +229,11 @@ window.__ModuleLoader__.load({
         'member.down': 'Move down',
         'member.missing': 'no longer in the catalog',
         'member.vision': 'Sees images',
+        'member.seesImages': 'Vision',
+        'member.seesImagesAuto': 'Follow the model',
+        'member.seesImagesYes': 'Force: sees images',
+        'member.seesImagesNo': 'Force: cannot see',
+        'member.seesImagesHint': 'Pick "Force: sees images" when a model supports images but does not declare it. Undeclared models are treated as text-only.',
         'member.probe': 'Test',
         'member.probeOk': 'available',
         'member.probeFail': 'unavailable',
@@ -822,7 +832,18 @@ window.__ModuleLoader__.load({
               value: member.maxTokens, ariaLabel: t('member.maxTokens'),
               placeholder: inheritedMax === undefined ? t('member.defaultAuto') : String(inheritedMax),
               onChange: maxTokens => onChange(maxTokens === undefined ? without('maxTokens') : { ...member, maxTokens }),
-            })))))
+            })),
+          h(Field, { label: t('member.seesImages'), hint: t('member.seesImagesHint') },
+            h('select', {
+              value: member.seesImages === true ? 'yes' : member.seesImages === false ? 'no' : '',
+              'aria-label': `${member.model} ${t('member.seesImages')}`,
+              onChange: event => onChange(event.target.value === ''
+                ? without('seesImages')
+                : { ...member, seesImages: event.target.value === 'yes' }),
+            },
+            h('option', { value: '' }, t('member.seesImagesAuto')),
+            h('option', { value: 'yes' }, t('member.seesImagesYes')),
+            h('option', { value: 'no' }, t('member.seesImagesNo')))))))
     }
 
     // ── tier card ───────────────────────────────────────────────────────────

@@ -125,19 +125,49 @@ function failureOf(reason) {
  * @param {number} [idleTimeoutMs] - abandon the attempt after this long without a chunk; 0 disables.
  * @returns {Promise<{kind: 'answer', chunks: object[]} | {kind: 'failed', code?: string, message?: string} | {kind: 'aborted', message?: string}>}
  */
-export async function runMember(stream, signal, idleTimeoutMs = 0) {
+/**
+ * Run one member, streaming as soon as it is safe to.
+ *
+ * The buffering rule exists for failover: a lane that dies after emitting half an
+ * answer must not leak that half, so output is withheld until it contains
+ * something a reader actually asked for (text, a tool call). But withholding
+ * *everything* — which an earlier version did — costs the entire point of a
+ * stream: the caller waits for the full answer, time-to-first-token becomes the
+ * whole generation, and the harness measures a throughput of tokens/second that
+ * divides by zero-ish elapsed time and prints absurd numbers like 264160 tok/s.
+ *
+ * So: hold chunks until the commit point, then pass every later chunk straight
+ * through. After the commit the turn can no longer fail over anyway — output is
+ * already visible — so there is nothing left to protect.
+ *
+ * The verdict is written into `sink.verdict` because a generator cannot both
+ * yield chunks and return a value the caller reads.
+ * @param {AsyncIterable<object>} stream - the member's chunk stream.
+ * @param {AbortSignal} [signal] - cancellation.
+ * @param {number} [idleTimeoutMs] - fail after this long with no chunk; 0 disables.
+ * @param {{verdict?: object}} sink - receives the verdict before the generator ends.
+ * @returns {AsyncGenerator<object>} committed chunks only.
+ */
+export async function* streamMember(stream, signal, idleTimeoutMs = 0, sink = {}) {
   const held = []
   let committed = false
   let failure
   let aborted
   let finished = false
+  let usage
   const iterator = stream[Symbol.asyncIterator]()
   const timeoutMessage = () => `超过 ${Math.round(idleTimeoutMs / 1000)} 秒没有收到任何数据`
+  /** Settle the verdict exactly once. */
+  const settle = verdict => {
+    sink.verdict = verdict
+    return verdict
+  }
   try {
     while (true) {
       if (signal?.aborted === true) {
         await iterator.return?.().catch(() => {})
-        return { kind: 'aborted' }
+        settle({ kind: 'aborted' })
+        return
       }
       const step = idleTimeoutMs > 0
         ? await raceDeadline(iterator.next(), idleTimeoutMs)
@@ -146,41 +176,91 @@ export async function runMember(stream, signal, idleTimeoutMs = 0) {
         // The provider went quiet mid-stream. Settling the iterator lets the
         // adapter release its own resources instead of leaking a socket.
         await iterator.return?.().catch(() => {})
-        return { kind: 'failed', code: 'TIMEOUT', message: timeoutMessage() }
+        settle({ kind: 'failed', code: 'TIMEOUT', message: timeoutMessage() })
+        return
       }
       if (step.kind === 'error') {
         await iterator.return?.().catch(() => {})
-        return { kind: 'failed', message: describe(step.error), ...(codeOf(step.error) === undefined ? {} : { code: codeOf(step.error) }) }
+        const code = codeOf(step.error)
+        settle({ kind: 'failed', message: describe(step.error), ...(code === undefined ? {} : { code }) })
+        return
       }
       const row = step.value
       if (row.done === true) break
       const chunk = row.value
-      held.push(chunk)
-      // Bookkeeping runs before the commit short-circuit: a member that has
+      // Bookkeeping runs before any commit short-circuit: a member that has
       // already emitted visible output still has to have its terminal `finish`
       // observed, or a good answer would be reported as a truncated stream.
       if (chunk?.type === 'finish') {
         finished = true
         if (chunk.reason?.kind === 'aborted') aborted = failureOf(chunk.reason)
         else if (chunk.reason?.kind === 'error') failure = failureOf(chunk.reason)
+        if (!committed) { held.push(chunk); continue }
+        yield chunk
         continue
       }
-      if (!committed && commitsAnswer(chunk)) committed = true
+      if (chunk?.type === 'usage') usage = chunk
+      if (committed) {
+        yield chunk
+        continue
+      }
+      held.push(chunk)
+      if (!commitsAnswer(chunk)) continue
+      committed = true
+      // Flush what was held, then every later chunk flows live.
+      for (const pending of held) yield pending
+      held.length = 0
     }
   } catch (error) {
-    return { kind: 'failed', message: describe(error), ...(codeOf(error) === undefined ? {} : { code: codeOf(error) }) }
+    const code = codeOf(error)
+    settle({ kind: 'failed', message: describe(error), ...(code === undefined ? {} : { code }) })
+    return
   }
   if (aborted !== undefined || signal?.aborted === true) {
-    return { kind: 'aborted', ...(aborted?.message === undefined ? {} : { message: aborted.message }) }
+    settle({ kind: 'aborted', ...(aborted === undefined ? {} : { message: aborted.message }), ...(aborted === undefined ? {} : { code: 'ABORTED' }) })
+    return
   }
+  if (failure !== undefined) {
+    // A terminal error chunk after output was already shown cannot be retried:
+    // the reader has the partial answer, and a failover would print a second
+    // answer on top of it.
+    settle(committed
+      ? { kind: 'failed', committed: true, message: failure.message, ...(failure.code === undefined ? {} : { code: failure.code }) }
+      : { kind: 'failed', ...failure })
+    return
+  }
+  if (failure !== undefined) return
   if (!finished) {
-    // A stream that ends without its terminal chunk cannot be replayed: the
-    // reader would see a turn with no ending.
-    return { kind: 'failed', code: 'TRANSPORT', message: '数据流在结束标记之前中断' }
+    // A stream that stops without its finish chunk cannot be replayed.
+    settle(committed
+      ? { kind: 'failed', committed: true, code: 'TRANSPORT', message: '数据流没有正常结束' }
+      : { kind: 'failed', code: 'TRANSPORT', message: '数据流没有正常结束' })
+    return
   }
-  if (failure !== undefined) return { kind: 'failed', ...failure }
-  if (!committed) return { kind: 'failed', code: 'EMPTY_RESPONSE', message: '没有返回任何可见内容' }
-  return { kind: 'answer', chunks: held }
+  if (!committed) {
+    settle({ kind: 'failed', code: 'EMPTY_RESPONSE', message: '没有返回任何可见内容' })
+    return
+  }
+  settle({ kind: 'answer', ...(usage === undefined ? {} : { usage }) })
+}
+
+/**
+ * Drain one member and return its verdict, keeping the chunks.
+ *
+ * Used by the tests and by any caller that wants the whole answer at once. The
+ * dispatch path uses {@link streamMember} directly so it can forward output as it
+ * arrives.
+ * @param {AsyncIterable<object>} stream - the member's chunk stream.
+ * @param {AbortSignal} [signal] - cancellation.
+ * @param {number} [idleTimeoutMs] - fail after this long with no chunk; 0 disables.
+ * @returns {Promise<object>} verdict, with `chunks` when it answered.
+ */
+export async function runMember(stream, signal, idleTimeoutMs = 0) {
+  const sink = {}
+  const chunks = []
+  for await (const chunk of streamMember(stream, signal, idleTimeoutMs, sink)) chunks.push(chunk)
+  const verdict = sink.verdict ?? { kind: 'failed', code: 'TRANSPORT', message: '数据流没有正常结束' }
+  return verdict.kind === 'answer' ? { ...verdict, chunks } : verdict
 }
 
 /**
@@ -292,7 +372,7 @@ export class RouterAdapter extends Adapter {
         id: tier.id,
         name: tier.name,
         ...(settings.showTierDescriptions ? { description: describeTier(tier) } : {}),
-        inputModalities: unionModalities(infos.map(info => info?.inputModalities)),
+        inputModalities: unionModalities(chain.map((member, index) => (member.seesImages === undefined ? infos[index]?.inputModalities : member))),
       }
     }))
   }
@@ -310,7 +390,7 @@ export class RouterAdapter extends Adapter {
   async resolveModel(provider, model) {
     const { settings } = this.#store.read()
     const tier = settings.tiers.find(candidate => candidate.id === model)
-    const allModalities = () => unionModalities(usable.map(info => info.inputModalities))
+    const allModalities = () => unionModalities(chain.map((member, index) => (member.seesImages === undefined ? usable[index]?.inputModalities : member)))
     const base = { provider, id: model, name: tier?.name ?? model, inputModalities: ['text'] }
     if (tier === undefined) {
       // Unknown ids still resolve, so a stored selection keeps rendering after
@@ -498,6 +578,7 @@ export class RouterAdapter extends Adapter {
         ...(Number.isFinite(window) && window > 0 ? { contextWindow: window } : {}),
         ...(info.reasoning?.efforts === undefined ? {} : { efforts: info.reasoning.efforts }),
         ...(info.inputModalities === undefined ? {} : { inputModalities: info.inputModalities }),
+        ...(member.seesImages === undefined ? {} : { seesImages: member.seesImages }),
       }
     })
     // A request carrying an image must not land on a member DSH would flatten it
@@ -616,7 +697,13 @@ export class RouterAdapter extends Adapter {
         }
         budget -= 1
         const startedAt = Date.now()
-        const outcome = await this.#attempt(llm, member, options, idleTimeoutMs, settings.effortMapping !== false)
+        // The attempt yields as it produces output, so this loop forwards the
+        // answer live; `sink.verdict` tells us how it ended once it is over.
+        const sink = {}
+        for await (const chunk of this.#attempt(llm, member, options, idleTimeoutMs, settings.effortMapping !== false, sink)) {
+          yield chunk
+        }
+        const outcome = sink.verdict ?? { kind: 'failed', code: 'TRANSPORT', message: '没有收到数据流' }
         if (outcome.kind === 'answer') {
           this.#logger.info?.(`model-router: tier "${tier.id}" answered with ${label}`)
           turn.attempt({ provider: member.provider, model: member.model, attempt: attempt + 1, outcome: 'ok', durationMs: Date.now() - startedAt })
@@ -626,9 +713,16 @@ export class RouterAdapter extends Adapter {
             model: member.model,
             estimate: routed.estimate,
             ...(Number.isFinite(member.contextWindow) ? { contextWindow: member.contextWindow } : {}),
-            ...(usageOf(outcome.chunks) === undefined ? {} : { usage: usageOf(outcome.chunks) }),
+            ...(outcome.usage === undefined ? {} : { usage: usageOf([outcome.usage]) }),
           })
-          for (const chunk of outcome.chunks) yield chunk
+          return
+        }
+        if (outcome.committed === true) {
+          // Output already reached the reader, so failing over would print a
+          // second answer on top of the first. Report the failure as terminal.
+          turn.attempt({ provider: member.provider, model: member.model, attempt: attempt + 1, outcome: 'failover', ...(outcome.code === undefined ? {} : { code: outcome.code }), durationMs: Date.now() - startedAt, message: outcome.message ?? '流中断' })
+          turn.commit({ outcome: 'failed', provider: member.provider, model: member.model, message: outcome.message ?? '输出中途失败' })
+          yield finishError(outcome.code ?? 'TRANSPORT', `模型路由：挡位 “${tier.name}” 在输出过程中失败（${outcome.message ?? '未知原因'}）。已输出内容保留在上方。`)
           return
         }
         if (outcome.kind === 'aborted') {
@@ -674,7 +768,7 @@ export class RouterAdapter extends Adapter {
    * @param {number} idleTimeoutMs - fail the attempt after this long with no data.
    * @param {boolean} mappingEnabled - translate the effort ladder onto this member.
    */
-  async #attempt(llm, member, options, idleTimeoutMs, mappingEnabled) {
+  async *#attempt(llm, member, options, idleTimeoutMs, mappingEnabled, sink) {
     try {
       // Precedence for the effort: the member's own choice, then the tier's
       // default (already folded in by `tierChain`), then whatever the session
@@ -710,13 +804,15 @@ export class RouterAdapter extends Adapter {
         temperature: prepared.config.temperature,
         stop: prepared.config.stop,
       }
-      return await runMember(prepared.stream(forwarded), options.signal, idleTimeoutMs)
-    } catch (cause) {
-      return {
-        kind: 'failed',
-        message: describe(cause),
-        ...(codeOf(cause) === undefined ? {} : { code: codeOf(cause) }),
+      // Stream through: once this member commits, its output reaches the caller
+      // as it is produced, so the harness can measure real latency and
+      // throughput instead of a single burst at the end.
+      for await (const chunk of streamMember(prepared.stream(forwarded), options.signal, idleTimeoutMs, sink)) {
+        yield chunk
       }
+    } catch (cause) {
+      const code = codeOf(cause)
+      sink.verdict = { kind: 'failed', message: describe(cause), ...(code === undefined ? {} : { code }) }
     }
   }
 }

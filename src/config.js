@@ -161,6 +161,13 @@ export function normalizeMember(raw) {
     ...tokenBudget('maxTokens', raw.maxTokens),
     enabled: raw.enabled !== false,
     ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+    // Tri-state vision override: undefined = trust the adapter, true/false =
+    // the user says this model can/cannot see. Needed because several gateways
+    // support images without ever disclosing inputModalities, and guessing wrong
+    // in either direction is expensive: claiming vision sends images to an
+    // endpoint that may reject them, denying it flattens images the model could
+    // have read.
+    ...(typeof raw.seesImages === 'boolean' ? { seesImages: raw.seesImages } : {}),
   }
 }
 
@@ -401,6 +408,7 @@ export function tierChain(tier, available) {
         ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
         ...(contextWindow === undefined ? {} : { contextWindow }),
         ...(maxTokens === undefined ? {} : { maxTokens }),
+        ...(member.seesImages === undefined ? {} : { seesImages: member.seesImages }),
       }
     })
 }
@@ -549,11 +557,21 @@ export function splitByModality(chain, needsImage) {
   const usable = []
   const skipped = []
   for (const member of chain) {
-    const modalities = Array.isArray(member.inputModalities) ? member.inputModalities : ['text']
-    if (modalities.includes('image')) usable.push(member)
+    if (seesImages(member)) usable.push(member)
     else skipped.push({ provider: member.provider, model: member.model })
   }
   return { usable, skipped }
+}
+
+/**
+ * Whether a member can accept an image, honouring the user's override.
+ * @param {object} member - chain entry, optionally carrying `seesImages`.
+ * @returns {boolean} true when images can be sent to it.
+ */
+export function seesImages(member) {
+  if (member?.seesImages === true) return true
+  if (member?.seesImages === false) return false
+  return Array.isArray(member?.inputModalities) && member.inputModalities.includes('image')
 }
 
 /**
@@ -568,6 +586,12 @@ export function splitByModality(chain, needsImage) {
  * @returns {string[]} `['text']`, or `['text', 'image']` when any member sees images.
  */
 export function unionModalities(lists) {
-  const canSee = lists.some(list => Array.isArray(list) && list.includes('image'))
+  const canSee = lists.some(entry => {
+    // Entries may be a raw modality list or a chain member carrying an override.
+    if (entry !== null && typeof entry === 'object' && !Array.isArray(entry) && 'seesImages' in entry) {
+      return seesImages(entry)
+    }
+    return Array.isArray(entry) && entry.includes('image')
+  })
   return canSee ? ['text', 'image'] : ['text']
 }
