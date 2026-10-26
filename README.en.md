@@ -154,7 +154,7 @@ dsh plugin --profile desktop add Abnerluo123/dsh-model-router
 Replace `desktop` with your profile name (`dsh profile list` shows them). To pin a release:
 
 ```sh
-dsh plugin --profile desktop add Abnerluo123/dsh-model-router#v1.1.3
+dsh plugin --profile desktop add Abnerluo123/dsh-model-router#v1.1.4
 ```
 
 > **If the install is blocked on `allowBuilds`**: pnpm does not run `prepare` scripts for

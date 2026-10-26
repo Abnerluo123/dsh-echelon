@@ -156,7 +156,7 @@ dsh plugin --profile desktop add Abnerluo123/dsh-model-router
 指定版本：
 
 ```sh
-dsh plugin --profile desktop add Abnerluo123/dsh-model-router#v1.1.3
+dsh plugin --profile desktop add Abnerluo123/dsh-model-router#v1.1.4
 ```
 
 > **如果安装被拦在 `allowBuilds`**：pnpm 默认不执行从 git 来源装进来的包的 `prepare` 脚本。按它给出的提示，把包名加进 profile 的 `pnpm-workspace.yaml` 后重跑：
