@@ -224,7 +224,7 @@ test('an empty tier reports how to fix it instead of silently failing', async ()
   const chunks = await collect(adapter, 'auto')
   const finish = finishOf(chunks)
   assert.equal(finish.reason.kind, 'error')
-  assert.match(finish.reason.failure.message, /模型路由/)
+  assert.match(finish.reason.failure.message, /Echelon/)
 })
 
 test('an unknown tier id and a disabled tier each end the turn', async () => {

@@ -1,181 +1,139 @@
-# dsh-model-router
+# Echelon
 
-> Replace the model picker with a handful of **tiers** you name yourself. Each tier is an ordered chain of real models: call them in your order, retry on failure, move to the next one when it still won't answer.
+> **Tier-based model routing** for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Collapse a dozen models into a few names you choose; behind each name is an ordered chain of real models — called in order, retried, failed over automatically.
 
-[![version](https://img.shields.io/badge/version-1.2.2-blue)](https://github.com/Abnerluo123/dsh-model-router/releases)
+[![version](https://img.shields.io/badge/version-1.3.0-blue)](https://github.com/Abnerluo123/dsh-model-router/releases)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-A DeepSeek Harness plugin · [中文](README.md)
+[中文](README.md)
 
----
-
-## The problem
-
-DeepSeek Harness lists **every** model you can reach. Add a couple of providers and that list becomes a dozen entries with different names and different capabilities — so every new conversation starts with "which one should I use this time?".
-
-Model Router replaces that decision with naming. You define a few tiers (`daily`, `deep`, `free`…) under **Configure**, and the picker shows only those names. Pick one and the plugin walks your ordered chain of real models.
+```sh
+dsh plugin --profile desktop add dsh-echelon
+```
 
 ![Configure tab](docs/images/configure.png)
 
-## Highlights
+## What it solves
 
-### 1. Models with different capabilities can back each other up
+The DSH model picker lists **every** model you can reach. With a few providers that becomes a dozen entries of differing names and capabilities, so each new conversation starts with "which one this time?".
 
-This is the least obvious part. Putting unequal models in one tier runs into three concrete obstacles — **each one turns "automatic failover" into silent degradation**:
+Echelon replaces that with naming: define a few tiers (`daily`, `deep`, `free`…) and the picker shows only those names.
 
-| Obstacle | What the plugin does |
+## Three things that matter
+
+### Models of different capability can back each other up
+
+This is the least obvious part. Mixing unequal models in one chain hits three obstacles, and **each one turns "automatic failover" into silent degradation**:
+
+| Obstacle | What Echelon does |
 |---|---|
-| **Reasoning levels named differently** (`medium` / `max` / nothing at all) | One vocabulary — `off / low / middle / high / xhigh` — translated per member at dispatch |
-| **Different context windows** (1M beside 300K) | The tier advertises the **largest** window, then picks a member that fits this request |
-| **Different vision support** (multimodal beside text-only) | An image request skips members that cannot see and goes to one that can |
+| **Reasoning levels named differently** (`medium` / `max` / not declared) | One vocabulary `off / low / middle / high / xhigh`, translated per member at dispatch |
+| **Different context windows** (1M beside 300K) | Advertises the **largest** window, then picks a member that fits this request |
+| **Different vision support** (multimodal beside text-only) | An image request skips members that cannot see |
 
-So "the strong model" and "the cheap model" can share one chain: small requests go cheap, large ones land on the big window, image requests land on the one that can see. **You never have to know which happened.**
+So the strong and the cheap model can share one chain: small requests go cheap, large ones land on the big window, image requests land on the one that can see. **You never have to know which happened.**
 
 ![Request log](docs/images/log.png)
 
-> This log shows all three decisions at once: an image request skipped the vision-less member, a large-context request skipped the small-window member, and a rate-limited call succeeded on retry.
+> One request in this log triggered all three: an image skipped the vision-less member, a large context skipped the small-window member, then a rate-limited call succeeded on retry.
 
-### 2. A cleaner system model picker
+### A cleaner picker
 
-Hide the real models, leave your tiers. Three modes: tiers only, hide only what I check, show everything (**default**).
+Hide the real models, leave your tiers. The default is "show everything" — hiding is something you choose after a tier works. **Hiding lifts automatically when no tier can dispatch**, so the menu can never become an empty list that locks you out of settings.
 
-Safety net: **hiding lifts automatically when no tier can dispatch** — the menu can never become an empty list that locks you out of settings.
+### Compatible with existing plugins
 
-### 3. Compatible with existing plugins
+A member can be another plugin's route, because they are all just `provider/model` strings: `dsh-our-free-model` lanes, `dsh-model-fusion`'s `auto`, anything that registers a provider.
 
-A member can be **another plugin's route**, because they are all just `provider/model` strings:
-
-- `dsh-our-free-model` lanes and combos
-- `dsh-model-fusion`'s `auto`
-- any plugin that registers its own provider
-
-No DSH patching. The plugin registers its own provider route and wraps one public read-only method to implement hiding.
+No DSH patching. Echelon registers one provider route and wraps one public read-only method to implement hiding.
 
 ## Quick start
 
-### Install
-
 ```sh
-dsh plugin --profile desktop add github:Abnerluo123/dsh-model-router
+dsh plugin --profile desktop add dsh-echelon
 ```
 
-Requires **DSH ≥ 0.2.0-rc.1** and **Node ≥ 22.14.0**. **Restart `dsh`** afterwards (a hot reload is not enough), reload the page, and **Model Router** appears in settings.
+Requires **DSH ≥ 0.2.0-rc.1** and **Node ≥ 22.14.0**. **Restart `dsh`** afterwards and reload the page.
 
-### Three steps
+1. **Configure → New tier**, give it a name.
+2. **Add models** in priority order — that order is the failover order.
+3. Once it answers, switch **Settings → What the model picker shows** to "Tiers only".
 
-1. **Configure → New tier**, name it (e.g. `daily`).
-2. **Add models** in the priority order you want — that order is the failover order.
-3. Once a tier answers normally, switch **Settings → What the model picker shows** to "Tiers only".
-
-> On a fresh install the mode is "Show everything", so **none of your models disappear**. Hiding is something you choose after confirming a tier works.
+> A fresh install shows everything, so **none of your models disappear**.
 
 ## Advanced
 
-### Per-member controls
+- **Per-member controls**: retries, timeout, reasoning effort, context window, max output, vision (force it for a model that supports images but does not declare them).
+- **Default level for new chats**: follow the model, or pin one of the five levels.
+- **Reasoning mapping switch**: on shows the five-level vocabulary and translates per member; off shows the model's own levels and forwards them as written.
+- **Selection strategy**: chain order (default) or most free space.
+- **Image routing**: pick a member that can see; only the current turn's image counts (an older image stops affecting selection).
+- **Request log**: who answered, every member tried, why each was skipped (with numbers), duration and tokens. In memory, switchable off.
+- **Settings file**: `$DSH_HOME/model-router/settings.json`, hand-editable; writes go through a temp file and a rename.
 
-Expand the row under a member:
+## How it differs from other tools
 
-| Setting | Meaning |
-|---|---|
-| **Retries** | Extra tries on this member before failing over (`0` = never) |
-| **Timeout** | Fail over after this long with no data (`0` = no limit) |
-| **Reasoning effort** | Empty follows the session; a chosen level is fixed for this member |
-| **Context window / max output** | Empty uses the model's own values; a value overrides them |
-| **Vision** | Force "sees images" for a model that supports it but does not declare it |
+Echelon is a **DSH plugin**, not a standalone model gateway — that difference decides what it is good for:
 
-![Settings tab](docs/images/settings.png)
-
-### Default level for new chats
-
-**Settings → Advanced → Default level for new chats**: empty follows the model's own default, or pin one of `off / low / middle / high / xhigh`.
-
-Existing conversations are unaffected — they keep the level they already selected.
-
-### Reasoning-level mapping
-
-| State | Picker shows | Dispatch |
+| | Echelon | LiteLLM / One-API / New-API / OpenRouter |
 |---|---|---|
-| **On (default)** | the five-level vocabulary `off / low / middle / high / xhigh` | translated per member into its own names |
-| Off | whatever the model declares | forwarded as written |
+| Form | plugin inside DSH | standalone service exposing an OpenAI-compatible endpoint |
+| Reach | only inside DSH | any OpenAI-compatible client (Cursor, Cline, Cherry Studio, Chatbox…) |
+| Setup | install into DSH | run a service, configure ports and keys |
+| Routes by | tier + context size + image + effort level | usually model name, weights, quota, rate limits |
+| Answers | "which model should DSH use" | "one entry point for every client" |
 
-With mapping on you pick one of five levels and every member understands it; with it off you see the model's real levels, which is useful for debugging.
+So if you want a single OpenAI-compatible entry point for Cursor, Cline, Cherry Studio or Chatbox, **LiteLLM or One-API is the right tool** — Echelon does not expose an external endpoint and cannot do that.
 
-### Selection strategy
+If you want to stop memorising a dozen model names **inside DSH**, with automatic failover that also respects context size and images, that is what Echelon is for. The two can coexist: register LiteLLM as a DSH provider and let Echelon put it in the same tier as your free lanes.
 
-Per tier, deciding who wins when several members fit:
+## Keywords
 
-| Strategy | Behaviour |
-|---|---|
-| **Chain order** (default) | the first that fits — most predictable |
-| **Most free space** | the roomiest window, so a long session is never squeezed into a member that barely fits |
+**English**: model router, model cascading, sequential fallback, automatic failover, multi-provider LLM, provider routing, rate-limit handling (HTTP 429), request retry, reasoning-effort mapping, context-window routing, vision / multimodal routing, DeepSeek Harness plugin
 
-### Image routing
-
-- **Route images to a model that can see** (on by default) — otherwise DSH silently flattens the image into text;
-- **Only this turn's image counts** (on by default) — an older image stops affecting later turns.
-
-If no member can see, the turn still goes out, but the log records it explicitly instead of letting you think the model misunderstood the picture.
-
-### Request log
-
-One row per request: who answered, every member tried, why each failed or was skipped, duration and token usage.
-
-The log lives **in memory only**, clears on restart, and can be switched off. Skip reasons carry the numbers, e.g. "needs 688000 tokens, 293488 usable / window 300000".
-
-### Settings file
-
-`$DSH_HOME/model-router/settings.json` (on Windows, `C:\Users\<you>\.dsh\model-router\settings.json`). Hand edits take effect on the next request. Missing fields, wrong types and out-of-range numbers are normalized; writes go through a temp file and a rename, so a failure never leaves half a document.
+**中文**：模型路由 / 模型聚合 / 挡位 / 按序降级 / 接口兜底 / 失败自动切换 / 渠道自动切换 / 防限流 / 429 处理 / 免费模型聚合 / 多供应商 LLM / 思考档位映射 / 上下文窗口路由 / 视觉能力路由
 
 ## Other install methods
 
-| Method | Command / location |
+| Method | Command |
 |---|---|
-| **GitHub** (recommended) | `dsh plugin --profile desktop add github:Abnerluo123/dsh-model-router` |
-| npm name (once published) | `dsh plugin --profile desktop add @abnerluo123/dsh-model-router` |
-| Pin a version | append `#v1.2.2` to either source |
-| Plugin market | Plugins → Market, search `dsh-model-router` (resolves the npm package) |
-| Local source | `git clone`, then `dsh plugin --profile desktop add /absolute/path` |
+| **npm** (recommended) | `dsh plugin --profile desktop add dsh-echelon` |
+| Pin a version | append `#v1.3.0` |
+| GitHub source | `dsh plugin --profile desktop add github:Abnerluo123/dsh-model-router` |
+| Plugin market | Plugins → Market, search `Echelon` |
 
 Replace `desktop` with your profile name (`dsh profile list`).
 
-**Verifying**: check that the profile manifest registered the plugin
+**Verify**: `dsh plugin --profile desktop list` should contain `dsh-echelon`, and **Echelon** appears in settings.
 
-```sh
-cd "$DSH_HOME/profiles/desktop"
-node -e "console.log(require('./package.json').dsh.profile.bundles.includes('dsh-model-router'))"
-```
-
-`true` means it is registered. Note that `dsh plugin list` only shows npm dependencies — a plugin added from a local path or a `file:` spec may not appear there; that is pnpm's behaviour, not a failed install.
-
-**Uninstall**: `dsh plugin --profile desktop remove dsh-model-router`. Settings stay in `settings.json`; delete that file to remove them completely.
+**Uninstall**: `dsh plugin --profile desktop remove dsh-echelon`. Settings stay in `settings.json`; delete that file to remove them completely.
 
 ## Known limitations
 
-- **Hiding wraps `llm.listModels`.** DSH has no catalog-filter hook, so the plugin wraps that one public read on the service instance. Code that bypasses it and reads an adapter directly is not filtered.
-- **The request log is memory only.** A restart clears it; it is a debugging view, not an audit trail.
-- **An undeclared vision capability is treated as unknown.** Such a member stays a candidate for image requests (DSH forwards the image untouched) but is never preferred. Use the member's **Vision** setting to point at a model that supports images without declaring it.
-- **`ABORTED` and `CONTEXT_WINDOW_EXCEEDED` never fail over.** You cancelled the first; the second would not fit on another model either.
+- **Hiding wraps `llm.listModels`**: DSH has no catalog-filter hook, so code that reads an adapter directly is not filtered.
+- **The request log is memory only**: cleared on restart; a debugging view, not an audit trail.
+- **An undeclared vision capability is unknown**: still a candidate for image requests, but never preferred.
+- **`ABORTED` and `CONTEXT_WINDOW_EXCEEDED` never fail over**: you cancelled the first; the second would not fit elsewhere either.
+- **The internal route id remains `model-router`**: the rebrand did not change it, so saved sessions and settings keep working.
 
 ## Development
 
 ```sh
-node --test test/               # all tests
+node --test test/               # 192 tests, no network needed
 node scripts/verify-profile.mjs # can the current profile load this plugin?
 ```
 
-The tests need no network and no DSH runtime. `test/integration.test.js` uses the **real** `LlmRuntime` — when the DSH app packages are present locally — to exercise registration, dispatch, hiding and failover.
+`test/integration.test.js` uses the **real** `LlmRuntime`, when the DSH app packages are present locally, to exercise registration, dispatch, hiding and failover.
 
 | File | Responsibility |
 |---|---|
-| `index.js` | Host entry: register the route, mount the catalog filter and settings API |
-| `src/adapter.js` | The adapter: chain dispatch, streaming, retries, failover, log writes |
-| `src/config.js` | Pure configuration: normalization, chain expansion, context and modality filters |
+| `index.js` | Host entry: register the route, catalog filter, settings API |
+| `src/adapter.js` | Chain dispatch, streaming, retries, failover, log writes |
+| `src/config.js` | Normalization, chain expansion, context and modality filters |
 | `src/effort.js` | Effort vocabulary and per-member translation |
 | `src/tokens.js` | Request size estimation and image detection |
 | `src/catalog.js` | Catalog filter (hiding) and the unfiltered read |
-| `src/http.js` | Settings and log API plus the same-origin check |
-| `src/store.js` | Atomic writes plus an mtime-invalidated cache |
-| `client.js` | Browser half: the settings page and the log view |
+| `client.js` | Settings page and request-log view |
 
 ## License
 

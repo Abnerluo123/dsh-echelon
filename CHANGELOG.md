@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.3.0 — 改名 Echelon
+
+包名从 `@abnerluo123/dsh-model-router` 改为 **`dsh-echelon`**，插件对外名称改为 **Echelon**。
+
+### 改了什么
+
+- `package.json` 的 `name` 与 `keywords`（补了 model-cascading / sequential-fallback / failover / rate-limit 等检索词）
+- 设置分区的导航与标题、模型选择器里的 provider 显示名、预览分组名、`displayName`
+- 用户可见的报错文案（`Echelon：挡位 … 没有可用成员`）
+- 浏览器半身的 `__ModuleLoader__` id
+- bundle patch 行的 `name`
+
+### 什么没改，以及为什么
+
+**内部路由 id 仍然是 `model-router`**（`ROUTER_PROVIDER`、`/api/model-router`、bundle 行 id、设置文件路径）。会话里保存的是 `provider: 'model-router'`，改掉它会让已保存的对话认不到模型。改名比"品牌一致性"更重要的事是不弄坏现有数据。
+
+`Symbol.for('dsh-model-router.*')` 也保持不变：它是防止重复包装的标记，换了名字会让第二个实例重复包装目录读取。
+
+### README
+
+重新精简：两张图（配置页、日志页），并把结构压到「解决什么问题 → 三个关键点 → 快速上手 → 高级功能」。
+
+新增两节：
+
+- **和其它方案的区别** —— 明确 Echelon 是 DSH 插件、不是独立网关，和 LiteLLM / One-API / New-API / OpenRouter 的适用场景分开写清。不谎称支持 Cursor / Cline / Cherry Studio 这类外部客户端，反而说明那种需求该用哪个工具。
+- **关键词** —— 中英文同义说法，便于检索。
+
+192 项测试。
+
+
 ## 1.2.2
 
 ### 包名改为作用域形式

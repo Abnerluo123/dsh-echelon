@@ -1,5 +1,5 @@
 /**
- * dsh-model-router — browser half.
+ * dsh-echelon — browser half.
  *
  * Contributes one settings section (`settings.section` id `model-router`) that
  * edits the router's own settings document over the plugin's same-origin API:
@@ -17,7 +17,7 @@
  * writes that can fail halfway.
  */
 window.__ModuleLoader__.load({
-  id: '@abnerluo123/dsh-model-router',
+  id: 'dsh-echelon',
   factory: require => {
     const module = { exports: {} }
     const exports = module.exports
@@ -33,8 +33,8 @@ window.__ModuleLoader__.load({
     // dictionaries are registered.
     const DICT = {
       zh: {
-        nav: '模型路由',
-        title: '模型路由',
+        nav: 'Echelon',
+        title: 'Echelon',
         intro: '只把你自己定义的挡位放进模型选择器。选中一个挡位，请求按你排好的顺序依次调用真实模型；某个模型重试之后仍然失败，就自动换下一个。',
         loading: '正在读取…',
         loadFailed: '无法连接插件后端',
@@ -172,7 +172,7 @@ window.__ModuleLoader__.load({
         'preview.title': '预览：模型选择器会显示',
         'preview.stock': '其它模型',
         'preview.hiddenAll': '（其余模型已全部隐藏）',
-        'preview.tiers': '模型路由',
+        'preview.tiers': 'Echelon',
 
         'units.sec': '秒',
       },

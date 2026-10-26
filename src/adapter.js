@@ -341,7 +341,7 @@ export class RouterAdapter extends Adapter {
    * @returns {{id: string, name: string}} detached provider metadata.
    */
   providerInfo(provider) {
-    return { id: provider, name: '模型路由' }
+    return { id: provider, name: 'Echelon' }
   }
 
   /**
@@ -638,23 +638,23 @@ export class RouterAdapter extends Adapter {
       return finishError(code, message)
     }
     if (tier === undefined) {
-      yield reject('NO_ROUTE', `模型路由：挡位 “${String(options.model)}” 不存在。请在 设置 → 模型路由 中重新创建或改选。`)
+      yield reject('NO_ROUTE', `Echelon：挡位 “${String(options.model)}” 不存在。请在 设置 → Echelon 中重新创建或改选。`)
       return
     }
     if (tier.enabled === false) {
-      yield reject('CONFIG_DISABLED', `模型路由：挡位 “${tier.name}” 已停用。`)
+      yield reject('CONFIG_DISABLED', `Echelon：挡位 “${tier.name}” 已停用。`)
       return
     }
     const chain = tierChain(tier, this.#providers())
     if (chain.length === 0) {
       yield reject('NO_ROUTE', error === undefined
-        ? `模型路由：挡位 “${tier.name}” 没有可用成员。请在 设置 → 模型路由 中添加模型。`
-        : `模型路由：${error}`)
+        ? `Echelon：挡位 “${tier.name}” 没有可用成员。请在 设置 → Echelon 中添加模型。`
+        : `Echelon：${error}`)
       return
     }
     const llm = this.ctx?.llm
     if (llm === undefined) {
-      yield reject('NO_ADAPTER', '模型路由：LLM 服务不可用。')
+      yield reject('NO_ADAPTER', 'Echelon：LLM 服务不可用。')
       return
     }
 
@@ -711,7 +711,7 @@ export class RouterAdapter extends Adapter {
         }
         if (budget <= 0) {
           turn.commit({ outcome: 'exhausted', message: `超过单轮尝试上限 ${MAX_ATTEMPTS_PER_TURN}` })
-          yield finishError('TRANSPORT', `模型路由：挡位 “${tier.name}” 尝试次数超过上限（${MAX_ATTEMPTS_PER_TURN}）。已尝试：${tried.join(' → ') || '无'}`)
+          yield finishError('TRANSPORT', `Echelon：挡位 “${tier.name}” 尝试次数超过上限（${MAX_ATTEMPTS_PER_TURN}）。已尝试：${tried.join(' → ') || '无'}`)
           return
         }
         budget -= 1
@@ -742,7 +742,7 @@ export class RouterAdapter extends Adapter {
           // second answer on top of the first. Report the failure as terminal.
           turn.attempt({ provider: member.provider, model: member.model, attempt: attempt + 1, outcome: 'failover', ...(outcome.code === undefined ? {} : { code: outcome.code }), durationMs: Date.now() - startedAt, message: outcome.message ?? '流中断' })
           turn.commit({ outcome: 'failed', provider: member.provider, model: member.model, message: outcome.message ?? '输出中途失败' })
-          yield finishError(outcome.code ?? 'TRANSPORT', `模型路由：挡位 “${tier.name}” 在输出过程中失败（${outcome.message ?? '未知原因'}）。已输出内容保留在上方。`)
+          yield finishError(outcome.code ?? 'TRANSPORT', `Echelon：挡位 “${tier.name}” 在输出过程中失败（${outcome.message ?? '未知原因'}）。已输出内容保留在上方。`)
           return
         }
         if (outcome.kind === 'aborted') {
@@ -777,7 +777,7 @@ export class RouterAdapter extends Adapter {
       }
     }
     turn.commit({ outcome: 'failed', message: tried.join(' → ') || '无可用成员' })
-    yield finishError('TRANSPORT', `模型路由：挡位 “${tier.name}” 的所有成员都失败了。已尝试：${tried.join(' → ') || '无'}`)
+    yield finishError('TRANSPORT', `Echelon：挡位 “${tier.name}” 的所有成员都失败了。已尝试：${tried.join(' → ') || '无'}`)
   }
 
   /**
@@ -889,7 +889,7 @@ export function intersectEfforts(infos, chain) {
  */
 export function describeTier(tier) {
   const active = tier.members.filter(member => member.enabled)
-  if (active.length === 0) return '尚未添加成员，打开 设置 → 模型路由 配置'
+  if (active.length === 0) return '尚未添加成员，打开 设置 → Echelon 配置'
   const head = active[0]
   const tail = active.length > 1 ? ` → 备用 ${active.length - 1}` : ''
   const attempts = head.attempts > 0 ? ` · 重试 ${head.attempts} 次` : ''

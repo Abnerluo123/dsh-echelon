@@ -1,5 +1,5 @@
 /**
- * dsh-model-router — Host half.
+ * dsh-echelon — Host half.
  *
  * Registers one provider route (`model-router`) whose models are the user's
  * named tiers, wires the settings API on the web server, and optionally hides
@@ -17,7 +17,7 @@
  * registry, and the filter wraps one public read method on the service instance
  * rather than its prototype.
  *
- * @module dsh-model-router
+ * @module dsh-echelon
  */
 import { RouterAdapter } from './src/adapter.js'
 import { installCatalogFilter, listUnfiltered } from './src/catalog.js'
@@ -57,7 +57,7 @@ export function apply(ctx) {
   // requests a fresh read itself.
   ctx.llm.registerConfigurableProviders?.([{
     provider: ROUTER_PROVIDER,
-    displayName: '模型路由',
+    displayName: 'Echelon',
     settingsNs: name,
     settingsPath: [],
   }])

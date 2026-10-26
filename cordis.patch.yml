@@ -1,4 +1,4 @@
-# dsh-model-router bundle patch.
+# dsh-echelon bundle patch.
 #
 # One insert row mounts the Host half; the browser half is declared by
 # `dsh.client` in package.json and binds to this same row name.
@@ -8,5 +8,5 @@
 # guarantees. It never rewrites another plugin's routes.
 - insert:
     - id: model-router
-      name: '@abnerluo123/dsh-model-router'
+      name: 'dsh-echelon'
       config: {}
