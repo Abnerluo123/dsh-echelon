@@ -122,6 +122,12 @@ window.__ModuleLoader__.load({
         'options.copied': '已复制',
         'options.modalityRouting': '有图片时自动选能看图的成员',
         'options.modalityRoutingHint': '带图时跳过看不了图的成员。',
+        'options.visionCompat': '兼容视觉模型',
+        'options.visionCompatHint': '超出时效后图片按文字发送',
+        'options.visionWindow': '时效',
+        'options.visionUnit': '单位',
+        'options.visionUnitMessages': '条对话',
+        'options.visionUnitMinutes': '分钟',
         'options.defaultEffort': '新对话默认强度',
         'options.defaultEffortModel': '跟随模型',
         'options.defaultEffortHint': '新会话预选的档位，已存在的会话不受影响。',
@@ -160,6 +166,7 @@ window.__ModuleLoader__.load({
         'log.effortDropped': '未发送档位（模型未声明）',
         'log.effortSame': '档位 {level}',
         'log.effortMapped': '档位 {from} → {to}',
+        'log.imagesAsText': '图片→文字',
 
         'preview.hiddenAll': '（其余模型已全部隐藏）',
         'preview.tiers': 'Echelon',
@@ -256,6 +263,12 @@ window.__ModuleLoader__.load({
         'options.copied': 'Copied',
         'options.modalityRouting': 'Route images to a model that can see',
         'options.modalityRoutingHint': 'Skip members that cannot see an attached image.',
+        'options.visionCompat': 'Vision compatibility',
+        'options.visionCompatHint': 'Older images are sent as text',
+        'options.visionWindow': 'Window',
+        'options.visionUnit': 'Unit',
+        'options.visionUnitMessages': 'messages',
+        'options.visionUnitMinutes': 'minutes',
         'options.defaultEffort': 'Default level for new chats',
         'options.defaultEffortModel': 'Follow the model',
         'options.defaultEffortHint': 'Preselected for new conversations only.',
@@ -294,6 +307,7 @@ window.__ModuleLoader__.load({
         'log.effortDropped': 'no level sent (model declares none)',
         'log.effortSame': 'level {level}',
         'log.effortMapped': 'level {from} → {to}',
+        'log.imagesAsText': 'images→text',
 
         'preview.hiddenAll': '(every other model is hidden)',
         'preview.tiers': 'Model Router',
@@ -562,15 +576,6 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
     const EFFORT_LADDER = ['off', 'low', 'middle', 'high', 'xhigh']
 
     /**
-     * Parse `128k` / `1m` / `131072` into whole tokens.
-     *
-     * Mirrors `parseTokenBudget` in `src/config.js`, and for the same reason as
-     * {@link EFFORT_LADDER}: one bundle, no host imports. The multipliers are
-     * binary — "1M context" means 1,048,576 tokens, so `1m` has to mean that too.
-     * @param {string} raw - typed text.
-     * @returns {number | undefined} tokens, or undefined when unusable.
-     */
-    /**
      * Parse `128k` / `1m` / `256K` / `1.5M` / `131072` into whole tokens.
      *
      * Mirrors `parseTokenBudget` in `src/config.js`, and for the same reason as
@@ -589,18 +594,6 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
       return Math.round(amount * (unit === 'k' ? 1_000 : unit === 'm' ? 1_000_000 : 1))
     }
 
-    /**
-     * Render tokens back in the shortest form a person would write.
-     *
-     * `1000000` → `1m`, `262144` → `256k`, `131072` → `128k`. Below 1M the unit is
-     * always `k` (never a raw digit string), because that is the whole point:
-     * nobody wants to count zeros. A value that is not a clean multiple of 1024
-     * stays exact — rounding it would silently change what gets saved next time.
-     * 1000000 is not a multiple of 1048576 but is a recognisable "1M", so the
-     * decimal million is folded onto `1m` as well.
-     * @param {number | undefined} value - stored tokens.
-     * @returns {string} field text, or '' when unset.
-     */
     /**
      * Render tokens the way a person would say them: `1m`, `256k`, `128k`.
      *
@@ -845,20 +838,6 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
     // ── member row ──────────────────────────────────────────────────────────
 
     /**
-     * A token budget written the way people say it: `128k`, `1m`, or plain
-     * digits.
-     *
-     * A context window is 128000 or 1048576, and typing those digits by hand is
-     * an invitation to add or drop a zero. The field therefore accepts a suffix
-     * and shows the stored value back in the same short form, so "what I set" and
-     * "what I see" are the same string. Digits alone are still accepted, because
-     * that is what a copied value looks like.
-     *
-     * `k` is 1024 and `m` is 1048576 — binary multiples, because every model that
-     * advertises "1M context" means 1,048,576 tokens and rounding down to 1e6
-     * would file the override 4.8% short of the real window.
-     */
-    /**
      * A token budget written the way people say it: `128k`, `1m`, `256K`, `1.5M`.
      *
      * Display and input are the same short form on purpose. A context window is
@@ -868,8 +847,9 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
      * not clean multiples stay exact, because rounding them would change what is
      * saved on the next edit.
      *
-     * `k` is 1024 and `m` is 1048576 — binary, because a model advertising "1M
-     * context" means 1,048,576 tokens.
+     * `k` is 1000 and `m` is 1000000 — decimal, like `formatTokens` and like the
+     * number a provider advertises in prose, so typing back exactly what the
+     * field shows never changes the value.
      *
      * While typing, the field is left alone (no rewriting mid-word); it is parsed
      * on blur or Enter, and the parsed value is shown back in short form.
@@ -1219,6 +1199,10 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
           h('span', { className: `mr-badge ${badge}` }, label),
           h('strong', { style: { fontWeight: 500 } }, entry.tierName ?? entry.tier),
           entry.vision === true ? h('span', { className: 'mr-pill' }, t('log.vision')) : null,
+          // The image was in the request but the member that answered could not
+          // see it: the router sent text instead. Worth saying out loud, because
+          // the answer will read as if the model never saw the picture.
+          entry.imagesAsText === true ? h('span', { className: 'mr-pill' }, t('log.imagesAsText')) : null,
           h('span', { className: 'mr-log-time' }, clock),
           h('span', { className: 'mr-log-time' }, t('log.elapsed', { ms: entry.durationMs }))),
         // The route the turn actually took: the tier the user picked, then the
@@ -1611,6 +1595,32 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
             }),
             h('span', { style: { fontSize: '13px' } }, t('options.modalityRouting')),
             h('small', null, t('options.modalityRoutingHint'))),
+          // Vision compatibility. The window is the whole feature, so it is only
+          // worth showing once the switch is on; a disabled number field next to
+          // an off switch is a control that cannot do anything yet.
+          h('label', { className: 'mr-row', title: t('options.visionCompatHint') },
+            h('input', {
+              type: 'checkbox', checked: settings.visionCompat === true,
+              onChange: event => setDraft(current => ({ ...current, visionCompat: event.target.checked })),
+            }),
+            h('span', { style: { fontSize: '13px' } }, t('options.visionCompat')),
+            h('small', null, t('options.visionCompatHint'))),
+          settings.visionCompat !== true ? null : h('div', { className: 'mr-member-knobs' },
+            h(Field, { label: t('options.visionWindow') },
+              h(NumberInput, {
+                value: settings.visionCompatValue, min: 1, max: 1440, ariaLabel: t('options.visionWindow'),
+                onChange: value => setDraft(current => ({
+                  ...current,
+                  visionCompatValue: value === undefined ? 5 : Math.min(Math.max(value, 1), 1440),
+                })),
+              })),
+            h(Field, { label: t('options.visionUnit') },
+              h('select', {
+                value: settings.visionCompatUnit, 'aria-label': t('options.visionUnit'),
+                onChange: event => setDraft(current => ({ ...current, visionCompatUnit: event.target.value })),
+              },
+              h('option', { value: 'messages' }, t('options.visionUnitMessages')),
+              h('option', { value: 'minutes' }, t('options.visionUnitMinutes'))))),
           h('label', { className: 'mr-row', title: t('options.effortMappingHint') },
             h('input', {
               type: 'checkbox', checked: settings.effortMapping !== false,

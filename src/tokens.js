@@ -184,3 +184,75 @@ export function requestHasImage(options) {
   const messages = Array.isArray(options?.messages) ? options.messages : []
   return messages.some(message => contentHasVisibleImage(message?.content))
 }
+
+/**
+ * Where the live images of one request sit.
+ *
+ * `distance` is counted the way a reader counts: the last message is 1. It is
+ * what the vision-compatibility window measures in its `messages` unit, and it
+ * is deliberately about *position*, not about wall-clock time — a message
+ * carries no timestamp (DSH's `createMessage` adds an id and nothing else).
+ *
+ * `signature` is a cheap identity for the image set, so a caller can tell "the
+ * same old screenshot is still in the prompt" from "a new picture just arrived"
+ * without hashing anything: the `minutes` unit uses it to decide whether the
+ * clock should restart.
+ * @param {unknown} messages - the request's messages.
+ * @returns {{count: number, distance: number, signature: string}} image facts.
+ */
+export function imageOccurrences(messages) {
+  const list = Array.isArray(messages) ? messages : []
+  let count = 0
+  let lastIndex = -1
+  const ids = []
+  for (const [index, message] of list.entries()) {
+    const content = message?.content
+    if (!Array.isArray(content)) continue
+    let inMessage = 0
+    for (const block of content) {
+      if (block === null || typeof block !== 'object' || block.type !== 'image') continue
+      if (block.offloaded === true) continue
+      inMessage += 1
+      // The canonical block carries `attachment`; older fixtures carry `source`.
+      ids.push(String(block.attachment?.attachmentId ?? block.source?.id ?? '?'))
+    }
+    if (inMessage > 0) {
+      count += inMessage
+      lastIndex = index
+    }
+  }
+  return {
+    count,
+    distance: lastIndex < 0 ? 0 : list.length - lastIndex,
+    signature: ids.join('|'),
+  }
+}
+
+/**
+ * Replace every live image block with plain text.
+ *
+ * This is the half of vision compatibility that makes the feature useful rather
+ * than merely permissive: a non-vision member may answer once the image is old,
+ * but it must be *told* there was one instead of receiving a picture its
+ * endpoint may reject. The words are deliberately short — the model is expected
+ * to infer the content from the surrounding conversation, which is still in the
+ * request.
+ * @param {unknown} messages - the request's messages.
+ * @param {string} [text] - placeholder text; `[图片]` by default.
+ * @returns {Array<object>} messages with images replaced, or the original array.
+ */
+export function replaceImagesWithText(messages, text = '[图片]') {
+  const list = Array.isArray(messages) ? messages : []
+  if (!list.some(message => contentHasVisibleImage(message?.content))) return list
+  return list.map(message => {
+    const content = message?.content
+    if (!Array.isArray(content) || !contentHasVisibleImage(content)) return message
+    let changed = false
+    const next = content.map(block => {
+      if (block === null || typeof block !== 'object' || block.type !== 'image' || block.offloaded === true) return block
+      changed = true
+      return { type: 'text', text }
+    })
+    return changed ? { ...message, content: next } : message
+  })
+}

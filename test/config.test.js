@@ -7,9 +7,11 @@ import { test } from 'node:test'
 import {
   DEFAULT_ATTEMPTS,
   DEFAULT_IDLE_TIMEOUT_MS,
+  DEFAULT_VISION_WINDOW,
   MAX_ATTEMPTS,
   MAX_IDLE_TIMEOUT_MS,
   MAX_TIERS,
+  MAX_VISION_WINDOW,
   MIN_IDLE_TIMEOUT_MS,
   ROUTER_PROVIDER,
   exposureHidesStock,
@@ -23,6 +25,7 @@ import {
   retryDelay,
   tierChain,
   tierIdOf,
+  visionWindow,
 } from '../src/config.js'
 
 test('tierIdOf keeps latin ids and disambiguates non-ascii names', () => {
@@ -330,4 +333,25 @@ test('log retention settings are clamped and default on', () => {
 
 test('the stored version records the shape change', () => {
   assert.equal(normalizeSettings({ version: 1 }).version, 3)
+})
+
+test('vision compatibility is off by default and clamped when on', () => {
+  const shipped = normalizeSettings(undefined)
+  assert.equal(shipped.visionCompat, false, 'the shipped default keeps every image authoritative')
+  assert.equal(shipped.visionCompatValue, DEFAULT_VISION_WINDOW)
+  assert.equal(shipped.visionCompatUnit, 'messages')
+  assert.equal(visionWindow(shipped), undefined, 'no window exists while the switch is off')
+
+  const on = normalizeSettings({ visionCompat: true, visionCompatValue: 3, visionCompatUnit: 'minutes' })
+  assert.deepEqual(visionWindow(on), { value: 3, unit: 'minutes' })
+
+  // A hand-edited file is still input: out-of-range and unusable values fall
+  // back rather than producing a window that never closes.
+  assert.equal(normalizeSettings({ visionCompat: true, visionCompatValue: 0 }).visionCompatValue, 1)
+  assert.equal(normalizeSettings({ visionCompat: true, visionCompatValue: 10 ** 6 }).visionCompatValue, MAX_VISION_WINDOW)
+  assert.equal(normalizeSettings({ visionCompat: true, visionCompatValue: 'x' }).visionCompatValue, DEFAULT_VISION_WINDOW)
+  assert.equal(normalizeSettings({ visionCompat: true, visionCompatUnit: 'hours' }).visionCompatUnit, 'messages')
+  assert.equal(normalizeSettings({ visionCompat: 'yes' }).visionCompat, false, 'only a real boolean switches it on')
+  assert.deepEqual(visionWindow({ visionCompat: true }), { value: DEFAULT_VISION_WINDOW, unit: 'messages' },
+    'a caller without a normalized document still gets the fallbacks')
 })

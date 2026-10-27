@@ -2,7 +2,7 @@
 
 > 给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 用的**挡位式模型路由**。把十几个模型收成几个你自己命名的名字，选中一个，背后是一条有序的真实模型链：按序调用、失败重试、自动降级。
 
-[![version](https://img.shields.io/badge/version-1.3.0-blue)](https://github.com/Abnerluo123/dsh-echelon/releases)
+[![version](https://img.shields.io/badge/version-1.9.0-blue)](https://github.com/Abnerluo123/dsh-echelon/releases)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [English](README.en.md)
@@ -68,7 +68,7 @@ dsh plugin --profile desktop add dsh-echelon
 - **挡位默认值**：给整条链设一个超时和重试次数，成员没单独设置时生效。
 - **新对话默认强度**：跟随模型，或固定成五档之一。
 - **思考强度映射开关**：开启时选择器统一五档，选中后按成员翻译（成员没有就换成最接近的，完全没有就交给模型默认）；关闭时显示模型自己上报的档位并原样转发。**成员编辑器里的那一栏永远只用该模型上报的档位** —— 那是给单个成员钉死档位的地方，不能钉一个它不认识的值。
-- **图片路由**：对话里只要还有图片，就选能看图的成员 —— 包括前几轮贴的旧图。DSH 会按被派发模型自己的声明把图片降级成文字，所以把带图的请求交给纯文本模型，模型只会回一句「我看不到图片」。
+- **图片路由**：带图的请求优先选能看图的成员。开启 **设置 → 高级 → 兼容视觉模型** 后，只有时效范围内的图片才把整条链锁在视觉成员上（默认最近 5 条对话，也可按分钟计）；超出时效，非视觉成员重新参与派发，图片以 `[图片]` 纯文本发给它们，内容由模型从上下文推断。能看图的成员照旧收到真实图片。**默认关闭**，行为与之前一致：对话里只要还有图片就走视觉成员。
 - **调用日志**：每次请求 **挡位 → 真实模型**、档位怎么翻译的（`xhigh → max` / 未发送）、试过谁、为什么被跳过、耗时与 token。写盘保存，重启不清空，默认保留 128 条，可关闭。
 - **上下文写法**：`1m`、`256k`、`128k`、纯数字都行，不用数零。`k`=1000、`m`=1000000（十进制：看到什么就输入什么，数值不会被改写）。
 - **保存即生效**：改设置不用重启，也不用刷新页面。右上角一个按钮：有改动时保存并重新加载，没改动时只重新加载。
@@ -136,7 +136,7 @@ Echelon 是 **DSH 插件**，不是独立的模型网关 —— 这个区别决�
 | 方式 | 命令 |
 |---|---|
 | **npm**（推荐） | `dsh plugin --profile desktop add dsh-echelon` |
-| 指定版本 | 加 `#v1.3.0` |
+| 指定版本 | 加 `#v1.9.0` |
 | GitHub 源码 | `dsh plugin --profile desktop add github:Abnerluo123/dsh-echelon` |
 | 插件市场 | 插件 → 插件市场，搜索 `Echelon` |
 

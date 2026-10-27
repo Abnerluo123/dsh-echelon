@@ -1439,3 +1439,149 @@ test('with mapping off the tier reports the model own levels', async () => {
   assert.deepEqual(info.reasoning.efforts.map(effort => effort.id), ['off', 'low', 'high', 'max'])
   assert.equal(info.reasoning.defaultEffort, 'off', "the model's own default is used verbatim")
 })
+
+// ── vision compatibility ─────────────────────────────────────────────────────
+// One tier that mixes a text-only member with a vision member, and a runtime
+// that records the messages each member's stream actually received. The
+// substitution is the half of the feature that has to be *observed*: routing a
+// text-only member to a request that still carries an image would hand it a
+// picture DSH then flattens, which is the bug this window exists to avoid.
+
+const VISION_MIX = {
+  blind: { models: [{ id: 'one', inputModalities: ['text'] }] },
+  eyes: { models: [{ id: 'two', inputModalities: ['text', 'image'] }] },
+}
+const VISION_MIX_MEMBERS = [{ provider: 'blind', model: 'one' }, { provider: 'eyes', model: 'two' }]
+
+/** Wire an adapter whose members report the messages they were streamed. */
+function wireRecording(settings, models = VISION_MIX) {
+  const store = makeStore(settings)
+  const seen = []
+  const adapter = new RouterAdapter({ store, logger: {} })
+  adapter.ctx = {
+    llm: {
+      listProviders: () => Object.keys(models).map(id => ({ id, name: id })),
+      resolveModelInfo: async (provider, model) => {
+        const known = models[provider]?.models.find(candidate => candidate.id === model)
+        if (known === undefined) throw new Error(`no model ${provider}/${model}`)
+        return {
+          provider, id: model, name: model,
+          ...(known.inputModalities === undefined ? {} : { inputModalities: known.inputModalities }),
+        }
+      },
+      prepareCall: async config => ({
+        config: { ...config },
+        stream: streamOptions => {
+          seen.push({ route: `${config.provider}/${config.model}`, messages: streamOptions.messages })
+          return streamOf(answer(`${config.provider}/${config.model}`))
+        },
+      }),
+    },
+  }
+  return { adapter, seen }
+}
+
+test('with the window off an old image still forces a vision member', async () => {
+  const { adapter, seen } = wireRecording(tierSettings(VISION_MIX_MEMBERS))
+  await collect(adapter, 'auto', { messages: HISTORY_WITH_OLD_IMAGE, sessionId: 's1' })
+  assert.equal(adapter.requestLog.read().entries[0].provider, 'eyes')
+  assert.ok(JSON.stringify(seen[0].messages).includes('"image"'), 'the picture still reaches the member unchanged')
+})
+
+test('an image outside the messages window lets a text-only member answer', async () => {
+  const { adapter, seen } = wireRecording({
+    ...tierSettings(VISION_MIX_MEMBERS),
+    visionCompat: true, visionCompatValue: 2, visionCompatUnit: 'messages',
+  })
+  const chunks = await collect(adapter, 'auto', { messages: HISTORY_WITH_OLD_IMAGE, sessionId: 's1' })
+  assert.equal(finishOf(chunks).reason.kind, 'stop')
+  const entry = adapter.requestLog.read().entries[0]
+  assert.equal(entry.provider, 'blind', 'the chain is free again outside the window')
+  assert.equal(entry.imagesAsText, true, 'and the log says the picture went as text')
+
+  const sent = seen[0].messages
+  assert.equal(sent.length, HISTORY_WITH_OLD_IMAGE.length, 'the conversation is not shortened')
+  assert.ok(!JSON.stringify(sent).includes('"image"'), 'no image block reaches a member that cannot see')
+  assert.ok(sent[0].content.some(block => block.type === 'text' && block.text === '[图片]'), 'the picture became text')
+  assert.equal(sent[2].content[0].text, '好，那帮我写代码', 'the rest of the conversation is untouched')
+})
+
+test('an image inside the messages window still forces a vision member', async () => {
+  const { adapter } = wireRecording({
+    ...tierSettings(VISION_MIX_MEMBERS),
+    visionCompat: true, visionCompatValue: 3, visionCompatUnit: 'messages',
+  })
+  await collect(adapter, 'auto', { messages: HISTORY_WITH_OLD_IMAGE, sessionId: 's1' })
+  const entry = adapter.requestLog.read().entries[0]
+  assert.equal(entry.provider, 'eyes', 'distance 3 is inside a window of 3')
+  assert.equal(entry.imagesAsText, undefined, 'nothing was replaced')
+})
+
+test('a vision member keeps the picture even when the window has closed', async () => {
+  // The substitution is per member: a lane that can see the image still gets it,
+  // so a closed window never degrades the members that could have read it.
+  const { adapter, seen } = wireRecording({
+    ...tierSettings([{ provider: 'eyes', model: 'two' }, { provider: 'blind', model: 'one' }]),
+    visionCompat: true, visionCompatValue: 1, visionCompatUnit: 'messages',
+  })
+  await collect(adapter, 'auto', { messages: HISTORY_WITH_OLD_IMAGE, sessionId: 's1' })
+  assert.equal(adapter.requestLog.read().entries[0].provider, 'eyes')
+  assert.ok(JSON.stringify(seen[0].messages).includes('"image"'), 'the image is still context for a lane that can read it')
+})
+
+test('a minutes window closes on its own clock without a new picture', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000 })
+  const { adapter, seen } = wireRecording({
+    ...tierSettings(VISION_MIX_MEMBERS),
+    visionCompat: true, visionCompatValue: 5, visionCompatUnit: 'minutes',
+  })
+  // First sight of this session: an unknown picture counts as fresh, which is the
+  // conservative reading and the only one available before a clock exists.
+  await collect(adapter, 'auto', { messages: HISTORY_WITH_OLD_IMAGE, sessionId: 's1' })
+  assert.equal(adapter.requestLog.read().entries[0].provider, 'eyes')
+
+  t.mock.timers.tick(6 * 60_000)
+  // The same screenshot is still in the prompt, but no new one arrived: the
+  // window has closed, and the text-only member can serve the turn.
+  await collect(adapter, 'auto', { messages: HISTORY_WITH_OLD_IMAGE, sessionId: 's1' })
+  assert.equal(adapter.requestLog.read().entries[0].provider, 'blind', 'the same old screenshot does not restart the window')
+  assert.equal(adapter.requestLog.read().entries[0].imagesAsText, true)
+  assert.ok(!JSON.stringify(seen[1].messages).includes('"image"'))
+})
+
+test('a newly attached picture restarts a minutes window', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000 })
+  const { adapter } = wireRecording({
+    ...tierSettings(VISION_MIX_MEMBERS),
+    visionCompat: true, visionCompatValue: 5, visionCompatUnit: 'minutes',
+  })
+  await collect(adapter, 'auto', { messages: HISTORY_WITH_OLD_IMAGE, sessionId: 's1' })
+  t.mock.timers.tick(6 * 60_000)
+  await collect(adapter, 'auto', { messages: HISTORY_WITH_OLD_IMAGE, sessionId: 's1' })
+  assert.equal(adapter.requestLog.read().entries[0].provider, 'blind', 'the window closed')
+
+  // A second attachment arrives, so the conversation needs eyes again even
+  // though the first picture is older than the window.
+  const withSecondImage = [
+    ...HISTORY_WITH_OLD_IMAGE,
+    { role: 'user', content: [{ type: 'image', source: { kind: 'attachment', id: 'new' } }, { type: 'text', text: '再看这张' }] },
+  ]
+  await collect(adapter, 'auto', { messages: withSecondImage, sessionId: 's1' })
+  assert.equal(adapter.requestLog.read().entries[0].provider, 'eyes', 'a new picture reopens the window')
+})
+
+test('one session window does not carry into another', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000 })
+  const { adapter } = wireRecording({
+    ...tierSettings(VISION_MIX_MEMBERS),
+    visionCompat: true, visionCompatValue: 5, visionCompatUnit: 'minutes',
+  })
+  await collect(adapter, 'auto', { messages: HISTORY_WITH_OLD_IMAGE, sessionId: 's1' })
+  t.mock.timers.tick(6 * 60_000)
+  await collect(adapter, 'auto', { messages: HISTORY_WITH_OLD_IMAGE, sessionId: 's1' })
+  assert.equal(adapter.requestLog.read().entries[0].provider, 'blind')
+
+  // A different conversation has its own clock: the image is unknown to it.
+  await collect(adapter, 'auto', { messages: HISTORY_WITH_OLD_IMAGE, sessionId: 's2' })
+  assert.equal(adapter.requestLog.read().entries[0].provider, 'eyes', 'another session is not judged by the first one clock')
+})

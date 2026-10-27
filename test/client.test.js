@@ -470,3 +470,44 @@ test('the tier header shows the name only, not its derived id', async () => {
   assert.equal(DICT.en['tiers.id'], undefined)
   assert.doesNotMatch(CSS, /\.mr-tier-name \.mr-pill/, 'no badge rules in the tier header')
 })
+
+test('the vision window is a switch, a number, and a unit — and nothing more', async () => {
+  // The brief: no long explanation in the UI. So the control is checked for
+  // being a control: a checkbox, a number, and a two-option unit select, with the
+  // window hidden until the switch is on.
+  const source = readFileSync(bundlePath, 'utf8')
+  assert.match(source, /options\.visionCompat/, 'the switch is labelled')
+  assert.match(source, /visionCompat: event\.target\.checked/, 'the checkbox writes a boolean')
+  assert.match(source, /settings\.visionCompat !== true \? null :/, 'the window only shows once the switch is on')
+  assert.match(source, /value: 'messages'/, 'the message window is offered')
+  assert.match(source, /value: 'minutes'/, 'the minute window is offered')
+
+  const { DICT } = loadBundle().__test
+  assert.equal(DICT.zh['options.visionCompat'], '兼容视觉模型')
+  assert.ok(DICT.zh['options.visionCompatHint'].length <= 12, 'the hint must stay a caption, not a paragraph')
+  assert.ok(DICT.en['options.visionCompatHint'].length <= 40)
+  assert.equal(DICT.zh['options.visionUnitMessages'], '条对话')
+  assert.equal(DICT.zh['options.visionUnitMinutes'], '分钟')
+})
+
+test('the log distinguishes an image sent as text from one a member saw', async () => {
+  const source = readFileSync(bundlePath, 'utf8')
+  assert.match(source, /entry\.imagesAsText === true/, 'the page reads the flag')
+  assert.match(source, /log\.imagesAsText/, 'and renders it with a label')
+  const { DICT } = loadBundle().__test
+  assert.notEqual(DICT.zh['log.imagesAsText'], DICT.zh['log.vision'], 'the two states must read differently')
+})
+
+test('token budget comments describe the decimal multipliers the code uses', async () => {
+  // The comments used to claim binary units (1024 / 1048576) while both the host
+  // and this bundle multiply by 1000 / 1000000. A comment that contradicts the
+  // line under it is worse than no comment: it is how the next edit gets it wrong.
+  const source = readFileSync(bundlePath, 'utf8')
+  assert.doesNotMatch(source, /`k` is 1024/, 'no binary claim about k')
+  assert.doesNotMatch(source, /`m` is 1048576/, 'no binary claim about m')
+  assert.doesNotMatch(source, /multipliers are\n\s*\*\s*binary/i, 'no binary claim above parseTokens')
+  const { parseTokens, formatTokens } = loadBundle().__test
+  assert.equal(parseTokens('1m'), 1_000_000)
+  assert.equal(parseTokens('128k'), 128_000)
+  assert.equal(formatTokens(1_048_576), '1m', 'a provider binary number is still shown on the decimal scale')
+})

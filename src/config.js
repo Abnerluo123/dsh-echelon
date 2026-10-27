@@ -182,6 +182,27 @@ export const TERMINAL_CODES = Object.freeze(['ABORTED', 'CONTEXT_WINDOW_EXCEEDED
 /** Exposure modes, most-to-least hidden. */
 export const EXPOSURE_MODES = Object.freeze(['tiers', 'custom', 'all'])
 
+/**
+ * Units the vision-compatibility window can be measured in.
+ *
+ * `messages` counts back from the end of the request, so it needs nothing but
+ * the messages themselves. `minutes` needs a clock, and the only one available
+ * per conversation is this plugin's own — a message carries no timestamp (DSH's
+ * `createMessage` adds an id and nothing else), so the adapter remembers when it
+ * last saw an image in a session (`GenerateOptions.sessionId`).
+ */
+export const VISION_WINDOW_UNITS = Object.freeze(['messages', 'minutes'])
+
+/** Unit used when the document does not say. */
+export const DEFAULT_VISION_WINDOW_UNIT = 'messages'
+
+/** Default window: the last five messages, or five minutes. */
+export const DEFAULT_VISION_WINDOW = 5
+
+/** Accepted range for the window. A day is already "never" in practice. */
+export const MIN_VISION_WINDOW = 1
+export const MAX_VISION_WINDOW = 1_440
+
 const TIER_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,47}$/
 
 /**
@@ -490,6 +511,41 @@ export function normalizeSettings(raw) {
     // actually see it. Off means "keep chain order even if the image gets
     // flattened to text", which is only sensible for debugging.
     modalityRouting: source.modalityRouting !== false,
+    // Vision compatibility: how long an image keeps the whole chain on
+    // vision-capable members. Off (the shipped default) means "an image anywhere
+    // in the conversation requires vision", which is the safe reading but leaves
+    // every text-only member unused for the rest of a long session once one
+    // screenshot lands in it. On, the window decides: inside it images still
+    // require vision, outside it the chain is free again and the images are sent
+    // to non-vision members as text (see `replaceImagesWithText`).
+    visionCompat: source.visionCompat === true,
+    visionCompatValue: Number.isFinite(Number(source.visionCompatValue))
+      ? clamp(Math.trunc(Number(source.visionCompatValue)), MIN_VISION_WINDOW, MAX_VISION_WINDOW)
+      : DEFAULT_VISION_WINDOW,
+    visionCompatUnit: VISION_WINDOW_UNITS.includes(source.visionCompatUnit)
+      ? source.visionCompatUnit
+      : DEFAULT_VISION_WINDOW_UNIT,
+  }
+}
+
+/**
+ * The active vision window, or `undefined` when vision compatibility is off.
+ *
+ * Kept as one accessor so the adapter and the settings page cannot disagree
+ * about what "on" means, and so a caller never has to re-derive the fallbacks
+ * `normalizeSettings` already applied.
+ * @param {object} settings - normalized settings.
+ * @returns {{value: number, unit: 'messages' | 'minutes'} | undefined} the window.
+ */
+export function visionWindow(settings) {
+  if (settings?.visionCompat !== true) return undefined
+  const value = Number(settings.visionCompatValue)
+  const unit = VISION_WINDOW_UNITS.includes(settings.visionCompatUnit)
+    ? settings.visionCompatUnit
+    : DEFAULT_VISION_WINDOW_UNIT
+  return {
+    value: Number.isFinite(value) ? clamp(Math.trunc(value), MIN_VISION_WINDOW, MAX_VISION_WINDOW) : DEFAULT_VISION_WINDOW,
+    unit,
   }
 }
 
@@ -739,15 +795,6 @@ export function visionOf(member) {
   if (member?.seesImages === false) return false
   if (!Array.isArray(declared)) return undefined
   return declared.includes('image')
-}
-
-/**
- * Whether a member is known to be unable to see.
- * @param {object} member - chain entry.
- * @returns {boolean} true only when the model said so (or the user forced it).
- */
-export function seesImages(member) {
-  return visionOf(member) === true
 }
 
 /**

@@ -2,7 +2,7 @@
 
 > **Tier-based model routing** for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Collapse a dozen models into a few names you choose; behind each name is an ordered chain of real models — called in order, retried, failed over automatically.
 
-[![version](https://img.shields.io/badge/version-1.3.0-blue)](https://github.com/Abnerluo123/dsh-echelon/releases)
+[![version](https://img.shields.io/badge/version-1.9.0-blue)](https://github.com/Abnerluo123/dsh-echelon/releases)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [中文](README.md)
@@ -68,7 +68,7 @@ Requires **DSH ≥ 0.2.0-rc.1** and **Node ≥ 22.14.0**. **Restart `dsh`** afte
 - **Tier defaults**: one timeout and retry count for the whole chain, used by members that do not set their own.
 - **Default level for new chats**: follow the model, or pin one of the five levels.
 - **Reasoning mapping switch**: on means one five-level vocabulary in the picker, translated onto each member at dispatch (nearest published level, or the model's default when it publishes none); off shows each model's own levels and forwards them as written. The per-member control in the editor always offers only that model's own levels — it pins one member, so it must not name a level that member cannot honour.
-- **Image routing**: as long as an image is still in the conversation — including one attached several turns ago — the request goes to a member that can see. DSH flattens images based on the *dispatched member's* own declaration, so handing an image-bearing request to a text model only earns "I can't see any image".
+- **Image routing**: an image-bearing request prefers a member that can see. With **Settings → Advanced → Vision compatibility** on, only images inside the window keep the whole chain on vision members (the last five messages by default, or a number of minutes); outside it, text-only members are candidates again and receive `[图片]` as text, leaving them to infer the content from the conversation. Members that can see still get the real image. **Off by default**, which is the earlier behaviour: any image still in the conversation requires vision.
 - **Request log**: each turn shows **tier → real model**, how the level was translated (`xhigh → max`, or not sent at all), every member tried, why each was skipped, duration and tokens. Written to disk, so a restart does not erase it; 128 turns kept by default, switchable off.
 - **Context shorthand**: `1m`, `256k`, `128k` or plain digits — no counting zeros. `k`=1000, `m`=1000000 (decimal, so what the field shows is what it means).
 - **Saves apply immediately**: no restart, no page reload. One button top-right: save-and-reload when there are edits, plain reload when there are none.
@@ -127,7 +127,7 @@ If you want to stop memorising a dozen model names **inside DSH**, with automati
 | Method | Command |
 |---|---|
 | **npm** (recommended) | `dsh plugin --profile desktop add dsh-echelon` |
-| Pin a version | append `#v1.3.0` |
+| Pin a version | append `#v1.9.0` |
 | GitHub source | `dsh plugin --profile desktop add github:Abnerluo123/dsh-echelon` |
 | Plugin market | Plugins → Market, search `Echelon` |
 

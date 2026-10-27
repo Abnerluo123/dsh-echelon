@@ -21,7 +21,7 @@
  */
 import { RouterAdapter } from './src/adapter.js'
 import { installCatalogFilter, listUnfiltered } from './src/catalog.js'
-import { ROUTER_PROVIDER, exposureHidesStock } from './src/config.js'
+import { ROUTER_PROVIDER } from './src/config.js'
 import { API_PREFIX, createHandler } from './src/http.js'
 import { RequestLog } from './src/log.js'
 import { SettingsStore } from './src/store.js'
@@ -140,20 +140,6 @@ export function apply(ctx) {
     scoped.effect(() => server.register({ kind: 'prefix', path: API_PREFIX, handler }), 'model-router: api routes')
     logger.info?.(`model-router: settings API mounted at ${API_PREFIX}`)
   })
-}
-
-/** Provider route ids currently registered, or an empty list when the registry is unavailable. */
-function providerIds(ctx) {
-  try {
-    return (ctx.llm?.listProviders?.() ?? []).map(provider => provider.id)
-  } catch {
-    return []
-  }
-}
-
-/** Whether the current rules would leave the picker empty; drives the settings warning. */
-export function stockMenuWouldBeEmpty(ctx, settings) {
-  return !exposureHidesStock(settings, providerIds(ctx))
 }
 
 /**

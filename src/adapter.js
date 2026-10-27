@@ -34,13 +34,15 @@ import {
   orderByContext,
   splitByModality,
   unionModalities,
+  visionOf,
+  visionWindow,
   retryDelay,
   tierChain,
 } from './config.js'
 import { EFFORT_IDS, effortIds, mapEffort, snapEffort } from './effort.js'
 import { RequestLog, usageOf } from './log.js'
 import { SettingsStore } from './store.js'
-import { estimateRequestTokens, requestHasImage } from './tokens.js'
+import { estimateRequestTokens, imageOccurrences, replaceImagesWithText } from './tokens.js'
 
 /** How long a resolved model's metadata is reused, in milliseconds. */
 const INFO_TTL_MS = 30_000
@@ -298,7 +300,6 @@ export async function* streamMember(stream, signal, idleTimeoutMs = 0, sink = {}
       : { kind: 'failed', ...failure })
     return
   }
-  if (failure !== undefined) return
   if (!finished) {
     // A stream that stops without its finish chunk cannot be replayed.
     settle(committed
@@ -403,6 +404,13 @@ export class RouterAdapter extends Adapter {
   #log
   /** @type {Map<string, {at: number, info: object | undefined}>} */
   #info = new Map()
+  /**
+   * When this plugin last saw a *new* image in one session, and which images
+   * they were. Only the `minutes` window needs it: DSH's messages carry no
+   * timestamp, so the adapter is the only clock in reach.
+   * @type {Map<string, {at: number, signature: string}>}
+   */
+  #imageClock = new Map()
 
   /**
    * @param {object} options - wiring supplied by the plugin entry.
@@ -656,18 +664,6 @@ export class RouterAdapter extends Adapter {
   }
 
   /**
-   * Resolve each member's real context window and order the chain by fit.
-   *
-   * Windows are resolved per turn rather than cached: a gateway can change what
-   * it advertises, and a stale window would route a large request into a small
-   * model for the rest of the process's life. The resolution is bounded (one
-   * `resolveModelInfo` per member).
-   *
-   * The same pass also attaches each member's advertised reasoning efforts,
-   * because effort mapping needs them and a second lookup per attempt would
-   * double the metadata calls for every turn.
-   * @param {object} llm - the live LLM service.
-  /**
    * The optional token meter, or undefined when the host has none.
    *
    * Must go through `ctx.get(...)`, not `ctx.tokenMeter`. Cordis guards service
@@ -703,7 +699,7 @@ export class RouterAdapter extends Adapter {
    * @param {object} options - the request about to be dispatched.
    * @returns {Promise<{ordered: Array<object>, skipped: Array<object>, estimate: number, fits: boolean}>} routing decision.
    */
-  async #routeByContext(llm, chain, options, strategy, modalityRouting) {
+  async #routeByContext(llm, chain, options, strategy, settings) {
     const estimate = estimateRequestTokens(options, this.#meter()).inputTokens
     // Even a single-member chain needs its efforts, for mapping.
     const resolved = new Map()
@@ -727,24 +723,72 @@ export class RouterAdapter extends Adapter {
     })
     // A request carrying an image must not land on a member DSH would flatten it
     // for: that is silent data loss, and it looks like the model "got dumber".
-    // Every image still in the conversation counts — DSH flattens per dispatched
-    // member, so an older screenshot would be replaced with a placeholder just as
-    // surely as a fresh one.
-    const vision = requestHasImage(options) && modalityRouting !== false
-    const split = modalityRouting === false ? { usable: enriched, skipped: [] } : splitByModality(enriched, vision)
+    // How long an image keeps that rule in force is what the vision-compatibility
+    // window decides; with the window off, any image still in the conversation
+    // counts, because DSH flattens per dispatched member and an older screenshot
+    // would become a placeholder just as surely as a fresh one.
+    const modalityRouting = settings.modalityRouting !== false
+    const images = imageOccurrences(options.messages)
+    const window = visionWindow(settings)
+    const needsVision = images.count > 0 && modalityRouting
+      && (window === undefined || this.#imagesAreLive(options, images, window))
+    // Outside the window every member is a candidate again, and the images are
+    // sent as text to whichever members cannot see (see `stream`). That is the
+    // point of the switch: one old screenshot must not retire the cheap half of
+    // the chain for the rest of the session.
+    const imagesAsText = images.count > 0 && modalityRouting && !needsVision
+    const split = modalityRouting ? splitByModality(enriched, needsVision) : { usable: enriched, skipped: [] }
     if (split.usable.length === 0) {
       // No member can see. Proceed with the whole chain anyway: DSH projects the
       // image to text, so the turn still answers, and the log names the
       // limitation rather than pretending the image was understood.
       const ordered = chain.length === 1 ? enriched : orderByContext(enriched, estimate, undefined, { strategy, reserveOutput: options.maxTokens }).ordered
-      return { ordered, skipped: [], blindSkipped: split.skipped, vision, estimate, fits: true, strategy, noVisionMember: true }
+      return { ordered, skipped: [], blindSkipped: split.skipped, vision: needsVision, imagesAsText, estimate, fits: true, strategy, noVisionMember: true }
     }
     const skipped = split.skipped.map(member => ({ ...member, reason: 'NO_VISION' }))
     if (split.usable.length === 1) {
-      return { ordered: split.usable, skipped, blindSkipped: [], vision, estimate, fits: true, strategy }
+      return { ordered: split.usable, skipped, blindSkipped: [], vision: needsVision, imagesAsText, estimate, fits: true, strategy }
     }
     const decision = orderByContext(split.usable, estimate, undefined, { strategy, reserveOutput: options.maxTokens })
-    return { ...decision, skipped: [...skipped, ...decision.skipped], blindSkipped: [], vision }
+    return { ...decision, skipped: [...skipped, ...decision.skipped], blindSkipped: [], vision: needsVision, imagesAsText }
+  }
+
+  /**
+   * Whether the images in this request are still inside the window.
+   *
+   * `messages` needs nothing but the request itself: the newest image counts as
+   * distance 1, so `5` means "one of the last five messages carries a picture".
+   *
+   * `minutes` needs a clock, and DSH's messages carry no timestamp — so the
+   * plugin keeps one per session. The signature is what makes it mean anything:
+   * the same old screenshot sitting in the prompt must *not* restart the window,
+   * while a newly attached one must. A session seen for the first time counts as
+   * fresh, which is the conservative reading of an unknown picture.
+   * @param {object} options - the request being routed.
+   * @param {{count: number, distance: number, signature: string}} images - image facts.
+   * @param {{value: number, unit: string}} window - the active window.
+   * @returns {boolean} true when a vision-capable member is still required.
+   */
+  #imagesAreLive(options, images, window) {
+    if (window.unit === 'messages') return images.distance <= window.value
+    const key = typeof options.sessionId === 'string' && options.sessionId !== '' ? options.sessionId : ''
+    const now = Date.now()
+    const previous = this.#imageClock.get(key)
+    if (previous === undefined || previous.signature !== images.signature) {
+      // Keep the map from growing with every conversation the process has ever
+      // seen: the oldest entry is the one whose window closed longest ago.
+      if (this.#imageClock.size >= 256) {
+        const oldest = this.#imageClock.keys().next()
+        if (oldest.done !== true) this.#imageClock.delete(oldest.value)
+      }
+      this.#imageClock.set(key, { at: now, signature: images.signature })
+      return true
+    }
+    // Refresh the insertion order so the eviction above drops the coldest
+    // conversation rather than the one being used right now.
+    this.#imageClock.delete(key)
+    this.#imageClock.set(key, previous)
+    return now - previous.at < window.value * 60_000
   }
 
   /**
@@ -792,7 +836,7 @@ export class RouterAdapter extends Adapter {
     // any of them. A tier spans models with different windows, so the whole
     // point of advertising the largest one is that the dispatcher then routes by
     // size instead of letting a smaller member reject the prompt.
-    const routed = await this.#routeByContext(llm, chain, options, tier.contextStrategy, settings.modalityRouting)
+    const routed = await this.#routeByContext(llm, chain, options, tier.contextStrategy, settings)
 
     const tried = []
     let budget = MAX_ATTEMPTS_PER_TURN
@@ -837,6 +881,11 @@ export class RouterAdapter extends Adapter {
       // in one place.
       const attempts = Math.max(member.attempts ?? DEFAULT_ATTEMPTS, 0) + 1
       const idleTimeoutMs = member.idleTimeoutMs ?? settings.defaultIdleTimeoutMs
+      // Outside the vision window a member that cannot see receives the images
+      // as text rather than a picture its endpoint may reject. A vision-capable
+      // member keeps them: the image is still context, and it can read it.
+      const blind = routed.imagesAsText === true && visionOf(member) !== true
+      const attemptOptions = blind ? { ...options, messages: replaceImagesWithText(options.messages) } : options
       for (let attempt = 0; attempt < attempts; attempt += 1) {
         if (options.signal?.aborted === true) {
           turn.commit({ outcome: 'aborted', message: '请求已取消' })
@@ -853,7 +902,7 @@ export class RouterAdapter extends Adapter {
         // The attempt yields as it produces output, so this loop forwards the
         // answer live; `sink.verdict` tells us how it ended once it is over.
         const sink = {}
-        for await (const chunk of this.#attempt(llm, member, options, idleTimeoutMs, settings.effortMapping !== false, sink)) {
+        for await (const chunk of this.#attempt(llm, member, attemptOptions, idleTimeoutMs, settings.effortMapping !== false, sink)) {
           yield chunk
         }
         const outcome = sink.verdict ?? { kind: 'failed', code: 'TRANSPORT', message: '没有收到数据流' }
@@ -866,6 +915,7 @@ export class RouterAdapter extends Adapter {
             outcome: 'ok',
             durationMs: Date.now() - startedAt,
             ...(sink.effort === undefined ? {} : { effort: sink.effort }),
+            ...(blind ? { imagesAsText: true } : {}),
           })
           turn.commit({
             outcome: 'ok',
@@ -880,6 +930,7 @@ export class RouterAdapter extends Adapter {
             ...(sink.effort === undefined ? {} : { effort: sink.effort }),
             ...(sink.effortDropped === true ? { effortDropped: true } : {}),
             ...(routed.vision === true ? { vision: true } : {}),
+            ...(blind ? { imagesAsText: true } : {}),
             ...(Number.isFinite(member.contextWindow) ? { contextWindow: member.contextWindow } : {}),
             ...(outcome.usage === undefined ? {} : { usage: usageOf([outcome.usage]) }),
           })

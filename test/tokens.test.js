@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { orderByContext } from '../src/config.js'
-import { contentHasVisibleImage, estimateMessageTokens, estimateRequestTokens, fitsContext, inputBudgetFor, requestHasImage, textTokens } from '../src/tokens.js'
+import { contentHasVisibleImage, estimateMessageTokens, estimateRequestTokens, fitsContext, imageOccurrences, inputBudgetFor, replaceImagesWithText, requestHasImage, textTokens } from '../src/tokens.js'
 
 const text = body => [{ type: 'text', text: body }]
 const member = (provider, contextWindow, extra = {}) => ({ provider, model: 'm', attempts: 0, idleTimeoutMs: 1, ...(contextWindow === undefined ? {} : { contextWindow }), ...extra })
@@ -199,4 +199,51 @@ test('an offloaded image does not require vision', () => {
   // DSH only marks a block offloaded once the image is gone from the prompt.
   const messages = [msg('user', [img({ offloaded: true })]), msg('assistant', [{ type: 'text', text: 'ok' }])]
   assert.equal(requestHasImage({ messages }), false)
+})
+
+test('imageOccurrences reports how far back the newest picture sits', () => {
+  // The `messages` unit of the vision window is counted this way: the last
+  // message is 1, so "inside the last five messages" is a distance, not an index.
+  const fresh = [msg('user', [img()])]
+  assert.deepEqual(imageOccurrences(fresh), { count: 1, distance: 1, signature: 'a1' })
+
+  const older = [msg('user', [img()]), msg('assistant', text('ok')), msg('user', text('thanks'))]
+  assert.equal(imageOccurrences(older).distance, 3, 'the picture is three messages back')
+
+  assert.deepEqual(imageOccurrences([]), { count: 0, distance: 0, signature: '' })
+  assert.equal(imageOccurrences(undefined).count, 0)
+})
+
+test('imageOccurrences ignores offloaded images and counts the rest', () => {
+  const messages = [
+    msg('user', [img(), img({ offloaded: true }), img({ source: { kind: 'attachment', id: 'a2' } })]),
+    msg('assistant', text('ok')),
+  ]
+  const images = imageOccurrences(messages)
+  assert.equal(images.count, 2, 'the offloaded occurrence is not in the request any more')
+  assert.equal(images.distance, 2)
+  assert.equal(images.signature, 'a1|a2', 'the signature identifies the set, so a new picture changes it')
+})
+
+test('replaceImagesWithText swaps every live image for text', () => {
+  const messages = [
+    msg('user', [img(), { type: 'text', text: '看这张图' }]),
+    msg('assistant', text('ok')),
+  ]
+  const replaced = replaceImagesWithText(messages)
+  assert.deepEqual(replaced[0].content, [{ type: 'text', text: '[图片]' }, { type: 'text', text: '看这张图' }])
+  assert.equal(replaced[1], messages[1], 'a message with no image keeps its identity')
+  assert.equal(messages[0].content[0].type, 'image', 'the caller document is not mutated')
+
+  // Nothing to do: the same array comes back, so a caller can compare identities.
+  const plain = [msg('user', text('hi'))]
+  assert.equal(replaceImagesWithText(plain), plain)
+  assert.equal(replaceImagesWithText([]).length, 0)
+
+  // An offloaded image is already text as far as the provider is concerned.
+  const offloaded = [msg('user', [img({ offloaded: true })])]
+  assert.equal(replaceImagesWithText(offloaded), offloaded)
+
+  // A custom placeholder is honoured, for a caller that wants its own words.
+  assert.equal(replaceImagesWithText([msg('user', [img()])], '[图]')[0].content[0].text, '[图]')
 })
